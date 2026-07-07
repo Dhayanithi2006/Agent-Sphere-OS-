@@ -1,4 +1,5 @@
 import pytest
+from fastapi.testclient import TestClient
 
 from app.agents.base_agent import BaseAgent
 from app.agents.developer import DeveloperAgent
@@ -13,6 +14,7 @@ from app.models.task import Task, TaskStatus
 from app.runtime.execution_engine import ExecutionEngine
 from app.runtime.recovery import RecoveryEngine
 from app.supervisor.supervisor import Supervisor
+from main import app
 
 
 class EchoAgent(BaseAgent):
@@ -65,6 +67,74 @@ def test_recovery_engine_tracks_affected_agents():
 
     assert recovery_engine.plan_recovery("research") == ["developer", "planner"]
     assert recovery_engine.create_checkpoint("planner", {"state": "ok"})
+
+
+def test_supervisor_tracks_processes_and_assignments():
+    supervisor = Supervisor()
+    agent = EchoAgent()
+    supervisor.register_agent(agent)
+
+    task_id = supervisor.assign_task("demo", agent.agent_id, {"value": "hi"})
+    processes = supervisor.list_processes()
+
+    assert len(processes) == 1
+    assert processes[0]["pid"] == processes[0]["pid"]
+    assert processes[0]["agent_name"] == agent.name
+    assert processes[0]["current_state"] == "created"
+    assert processes[0]["current_task"] == "demo"
+
+    result = supervisor.run_task(task_id)
+    assert result.success is True
+
+    updated_processes = supervisor.list_processes()
+    assert updated_processes[0]["current_state"] == "stopped"
+    assert updated_processes[0]["current_task"] == "demo"
+
+
+def test_supervisor_routes_expose_process_and_status_endpoints():
+    client = TestClient(app)
+
+    supervisor_response = client.get("/supervisor")
+    assert supervisor_response.status_code == 200
+    assert supervisor_response.json()["status"] == "running"
+
+    assign_response = client.post(
+        "/assign",
+        json={"name": "demo", "agent_id": "planner", "payload": {"task": "build runtime"}},
+    )
+    assert assign_response.status_code == 200
+    assert "task_id" in assign_response.json()
+
+    processes_response = client.get("/processes")
+    assert processes_response.status_code == 200
+    assert len(processes_response.json()) >= 1
+
+    status_response = client.get("/supervisor/status")
+    assert status_response.status_code == 200
+    assert status_response.json()["status"] == "running"
+
+
+def test_assign_endpoint_executes_task_and_updates_memory_and_dependencies():
+    client = TestClient(app)
+
+    response = client.post("/assign", json={"agent": "planner", "task": "Build Todo App"})
+    assert response.status_code == 200
+    assert "task_id" in response.json()
+
+    processes_response = client.get("/processes")
+    processes = processes_response.json()
+    assert len(processes) >= 1
+    assert processes[-1]["state"] == "COMPLETED"
+
+    memory_response = client.get("/memory")
+    assert memory_response.status_code == 200
+    assert memory_response.json()["planner"]["goal"] == "Build Todo App"
+
+    dependencies_response = client.get("/dependencies")
+    assert dependencies_response.status_code == 200
+    payload = dependencies_response.json()
+    assert payload["planner"] == []
+    assert payload["researcher"] == ["planner"]
 
 
 def test_intelligence_agents_execute_with_prompt_templates():
