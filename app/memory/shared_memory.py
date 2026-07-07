@@ -16,13 +16,18 @@ class SharedMemory:
     def __init__(self, db_path: str | None = None) -> None:
         self._db_path = db_path or os.path.join(os.getcwd(), "shared_memory.sqlite")
         self._lock = threading.RLock()
+        self._connection: sqlite3.Connection | None = None
         self._ensure_parent_directory()
         self._ensure_schema()
 
     def _connect(self) -> sqlite3.Connection:
+        if self._db_path == ":memory:" and self._connection is not None:
+            return self._connection
         connection = sqlite3.connect(self._db_path, check_same_thread=False, isolation_level=None)
         connection.row_factory = sqlite3.Row
         connection.execute("PRAGMA journal_mode=WAL")
+        if self._db_path == ":memory:":
+            self._connection = connection
         return connection
 
     def _ensure_parent_directory(self) -> None:
@@ -56,7 +61,8 @@ class SharedMemory:
                 )
                 connection.commit()
             finally:
-                connection.close()
+                if self._db_path != ":memory:":
+                    connection.close()
 
     def set(self, key: str, value: Any) -> None:
         """Store a value in shared memory."""
@@ -86,7 +92,8 @@ class SharedMemory:
                 )
                 connection.commit()
             finally:
-                connection.close()
+                if self._db_path != ":memory:":
+                    connection.close()
 
     def get(self, key: str, default: Any = None) -> Any:
         """Retrieve a value from shared memory."""
@@ -106,7 +113,8 @@ class SharedMemory:
                     return default
                 return self._deserialize(row["value"])
             finally:
-                connection.close()
+                if self._db_path != ":memory:":
+                    connection.close()
 
     def exists(self, key: str) -> bool:
         """Return whether a key exists in shared memory."""
@@ -121,7 +129,8 @@ class SharedMemory:
                 connection.execute("DELETE FROM memory_versions WHERE key = ?", (key,))
                 connection.commit()
             finally:
-                connection.close()
+                if self._db_path != ":memory:":
+                    connection.close()
 
     def clear(self) -> None:
         """Clear all shared memory contents."""
@@ -142,7 +151,8 @@ class SharedMemory:
                 rows = connection.execute("SELECT key FROM memory_items ORDER BY key").fetchall()
                 return [row["key"] for row in rows]
             finally:
-                connection.close()
+                if self._db_path != ":memory:":
+                    connection.close()
 
     def snapshot(self) -> dict[str, Any]:
         """Return a snapshot of the current memory contents."""
@@ -177,7 +187,8 @@ class SharedMemory:
                     for row in rows
                 ]
             finally:
-                connection.close()
+                if self._db_path != ":memory:":
+                    connection.close()
 
     def _next_version(self, connection: sqlite3.Connection, key: str) -> int:
         latest = connection.execute(

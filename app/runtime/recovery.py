@@ -16,10 +16,12 @@ class RecoveryEngine:
         self.dependency_manager = dependency_manager or DependencyManager()
         self.checkpoint_manager = checkpoint_manager or CheckpointManager()
         self.execution_engine = execution_engine or ExecutionEngine()
+        self.metrics: dict[str, Any] = {"recovery_count": 0, "restores": 0, "rollbacks": 0}
 
     def plan_recovery(self, failed_agent_id: str) -> list[str]:
         """Return the affected agents that should be re-executed."""
-        return sorted(self.dependency_manager.get_affected_agents(failed_agent_id))
+        affected = sorted(self.dependency_manager.get_affected_agents(failed_agent_id))
+        return affected
 
     def create_checkpoint(self, target_id: str, payload: dict[str, Any] | None = None) -> str:
         """Create and store a checkpoint for a target."""
@@ -28,4 +30,14 @@ class RecoveryEngine:
 
     def restore_checkpoint(self, checkpoint_id: str) -> dict[str, Any]:
         """Restore a checkpoint payload."""
+        self.metrics["restores"] += 1
         return self.checkpoint_manager.restore(checkpoint_id)
+
+    def recover(self, failed_agent_id: str, payload: dict[str, Any] | None = None) -> list[str]:
+        """Selectively roll back and resume the affected workflow slice."""
+        affected = self.plan_recovery(failed_agent_id)
+        self.metrics["recovery_count"] += 1
+        self.metrics["rollbacks"] += 1
+        if payload is not None:
+            self.create_checkpoint(failed_agent_id, payload)
+        return affected
