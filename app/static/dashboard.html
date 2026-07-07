@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>AgentSphere OS — Dashboard</title>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/reactflow@11.10.4/dist/umd/index.production.js"></script>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11.10.4/dist/style.css" />
+  <style>
+    :root {
+      --bg: #07090f;
+      --surface: #0d1117;
+      --surface2: #111827;
+      --border: #1f2937;
+      --blue: #3b82f6;
+      --green: #22c55e;
+      --amber: #f59e0b;
+      --red: #ef4444;
+      --text: #e2e8f0;
+      --text2: #94a3b8;
+      --radius: 12px;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 28px;
+      border-bottom: 1px solid var(--border);
+      background: var(--surface);
+    }
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 600;
+    }
+    .logo-icon {
+      width: 32px; height: 32px;
+      background: linear-gradient(135deg, var(--blue), #6366f1);
+      border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: 16px;
+    }
+    .main-layout { display: grid; grid-template-columns: 320px 1fr 340px; grid-template-rows: auto 1fr; gap: 16px; padding: 20px; height: calc(100vh - 64px); }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      overflow: hidden;
+      display: flex; flex-direction: column;
+    }
+    .card-header {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; justify-content: space-between; align-items: center;
+    }
+    .card-title { font-size: 0.85rem; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; }
+    .card-body { padding: 16px; flex: 1; overflow-y: auto; }
+    .form-group { margin-bottom: 12px; }
+    .label { display: block; font-size: 0.8rem; margin-bottom: 6px; color: var(--text2); }
+    select, textarea, input {
+      width: 100%; padding: 10px 12px;
+      background: var(--surface2); border: 1px solid var(--border);
+      border-radius: 8px; color: var(--text); font-size: 0.9rem;
+    }
+    select:focus, textarea:focus, input:focus { outline: none; border-color: var(--blue); }
+    .btn {
+      width: 100%; padding: 12px; background: var(--blue); color: white;
+      border: none; border-radius: 8px; font-weight: 600;
+      cursor: pointer; font-size: 0.9rem;
+    }
+    .btn:hover { background: #2563eb; }
+    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+    .process-table { width: 100%; border-collapse: collapse; }
+    .process-table th, .process-table td {
+      padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border);
+      font-size: 0.85rem;
+    }
+    .process-table th { color: var(--text2); }
+    .status-badge {
+      display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
+    }
+    .status-ready { background: rgba(100,116,139,0.15); color: #94a3b8; }
+    .status-running { background: rgba(245,158,11,0.15); color: var(--amber); }
+    .status-completed { background: rgba(34,197,94,0.15); color: var(--green); }
+    .status-failed { background: rgba(239,68,68,0.15); color: var(--red); }
+    .tabs { display: flex; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
+    .tab {
+      padding: 6px 12px; border: none; background: transparent; color: var(--text2);
+      font-size: 0.85rem; cursor: pointer; border-radius: 6px;
+    }
+    .tab.active { background: var(--surface2); color: var(--text); }
+    .flow-container { height: 400px; }
+    .memory-item {
+      display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border);
+      font-family: monospace; font-size: 0.8rem;
+    }
+    .memory-key { color: var(--text2); }
+    .memory-value { color: var(--text); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+    .stat-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; margin-bottom: 16px; }
+    .stat-card { background: var(--surface2); padding: 12px; border-radius: 8px; border:1px solid var(--border); }
+    .stat-value { font-size: 1.4rem; font-weight: 700; }
+    .stat-label { font-size: 0.75rem; color: var(--text2); }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect, useCallback, useRef } = React;
+    const { ReactFlow, useNodesState, useEdgesState, addEdge, Controls, Background, MiniMap, Handle, Position } = ReactFlow;
+
+    const AGENTS = [
+      { id: 'planner', name: 'Planner', emoji: '🗺️' },
+      { id: 'researcher', name: 'Researcher', emoji: '🔍' },
+      { id: 'developer', name: 'Developer', emoji: '💻' },
+      { id: 'tester', name: 'Tester', emoji: '🧪' },
+      { id: 'reviewer', name: 'Reviewer', emoji: '📋' }
+    ];
+
+    function AgentNode({ data }) {
+      return (
+        <div style={{
+          background: '#111827',
+          border: '2px solid #1f2937',
+          borderRadius: '8px',
+          padding: '12px 16px',
+          minWidth: '120px',
+          textAlign: 'center'
+        }}>
+          <Handle type="target" position={Position.Top} />
+          <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>{data.emoji}</div>
+          <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{data.label}</div>
+          <Handle type="source" position={Position.Bottom} />
+        </div>
+      );
+    }
+
+    const nodeTypes = {
+      agent: AgentNode
+    };
+
+    function Dashboard() {
+      const [activeTab, setActiveTab] = useState('processes');
+      const [processes, setProcesses] = useState([]);
+      const [agents, setAgents] = useState([]);
+      const [tasks, setTasks] = useState([]);
+      const [memory, setMemory] = useState({});
+      const [checkpoints, setCheckpoints] = useState([]);
+      const [events, setEvents] = useState([]);
+      const [selectedAgent, setSelectedAgent] = useState('planner');
+      const [taskInput, setTaskInput] = useState('');
+      const [isSubmitting, setIsSubmitting] = useState(false);
+      const [nodes, setNodes, onNodesChange] = useNodesState([
+        { id: 'planner', type: 'agent', position: { x: 250, y: 20 }, data: { label: 'Planner', emoji: '🗺️' } },
+        { id: 'researcher', type: 'agent', position: { x: 100, y: 120 }, data: { label: 'Researcher', emoji: '🔍' } },
+        { id: 'developer', type: 'agent', position: { x: 250, y: 120 }, data: { label: 'Developer', emoji: '💻' } },
+        { id: 'tester', type: 'agent', position: { x: 400, y: 120 }, data: { label: 'Tester', emoji: '🧪' } },
+        { id: 'reviewer', type: 'agent', position: { x: 250, y: 220 }, data: { label: 'Reviewer', emoji: '📋' } }
+      ]);
+      const [edges, setEdges, onEdgesChange] = useEdgesState([
+        { id: 'e1', source: 'planner', target: 'researcher' },
+        { id: 'e2', source: 'planner', target: 'developer' },
+        { id: 'e3', source: 'planner', target: 'tester' },
+        { id: 'e4', source: 'researcher', target: 'reviewer' },
+        { id: 'e5', source: 'developer', target: 'reviewer' },
+        { id: 'e6', source: 'tester', target: 'reviewer' }
+      ]);
+
+      const fetchData = useCallback(async () => {
+        try {
+          const [procRes, agentsRes, tasksRes, memRes, checkRes, eventsRes] = await Promise.all([
+            fetch('/processes'),
+            fetch('/agents'),
+            fetch('/tasks'),
+            fetch('/memory'),
+            fetch('/checkpoints'),
+            fetch('/events')
+          ]);
+          const [procs, agts, tsks, mem, chks, evts] = await Promise.all([
+            procRes.json(),
+            agentsRes.json(),
+            tasksRes.json(),
+            memRes.json(),
+            checkRes.json(),
+            eventsRes.json()
+          ]);
+          setProcesses(procs);
+          setAgents(agts);
+          setTasks(tsks);
+          setMemory(mem);
+          setCheckpoints(chks);
+          setEvents(evts.slice(-20));
+        } catch (err) {
+          console.error('Fetch error:', err);
+        }
+      }, []);
+
+      useEffect(() => {
+        fetchData();
+        const interval = setInterval(fetchData, 2000);
+        return () => clearInterval(interval);
+      }, [fetchData]);
+
+      const handleSubmit = async (e) => {
+        e.preventDefault();
+        if (!taskInput.trim()) return;
+        setIsSubmitting(true);
+        try {
+          const res = await fetch('/assign', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ agent_id: selectedAgent, task: taskInput, input: taskInput })
+          });
+          const data = await res.json();
+          setTaskInput('');
+        } catch (err) {
+          console.error('Submit error:', err);
+        } finally {
+          setIsSubmitting(false);
+        }
+      };
+
+      const getStatusBadge = (status) => {
+        const map = {
+          READY: { cls: 'status-ready', text: 'Ready' },
+          RUNNING: { cls: 'status-running', text: 'Running' },
+          COMPLETED: { cls: 'status-completed', text: 'Completed' },
+          FAILED: { cls: 'status-failed', text: 'Failed' },
+          created: { cls: 'status-ready', text: 'Ready' },
+          running: { cls: 'status-running', text: 'Running' },
+          stopped: { cls: 'status-completed', text: 'Completed' },
+          failed: { cls: 'status-failed', text: 'Failed' }
+        };
+        const s = map[status] || { cls: 'status-ready', text: status };
+        return (
+          <span className={`status-badge ${s.cls}`}>{s.text}</span>
+        );
+      };
+
+      const stats = {
+        totalProcesses: processes.length,
+        completedProcesses: processes.filter(p => p.state === 'COMPLETED' || p.state === 'stopped').length,
+        runningProcesses: processes.filter(p => p.state === 'RUNNING' || p.state === 'running').length,
+        failedProcesses: processes.filter(p => p.state === 'FAILED' || p.state === 'failed').length
+      };
+
+      return (
+        <div>
+          <header className="topbar">
+            <div className="logo">
+              <div className="logo-icon">⬡</div>
+              <div>
+                <div style={{ fontWeight: 700 }}>AgentSphere OS</div>
+                <div style={{ fontSize: '0.75rem', color: 'var(--text2)' }}>Dashboard</div>
+              </div>
+            </div>
+            <div style={{ display: 'flex', gap: '12px', fontSize: '0.85rem' }}>
+              <div style={{ background: 'var(--surface2)', padding: '6px 12px', borderRadius: '20px', border: '1px solid var(--border)' }}>
+                Agents: <strong>{agents.length}</strong>
+              </div>
+              <div style={{ background: 'var(--surface2)', padding: '6px 12px', borderRadius: '20px', border: '1px solid var(--border)' }}>
+                Tasks: <strong>{tasks.length}</strong>
+              </div>
+            </div>
+          </header>
+
+          <div className="main-layout">
+            {/* Left Column */}
+            <div className="card" style={{ gridRow: '1 / -1' }}>
+              <div className="card-header">
+                <div className="card-title">Run Agent</div>
+              </div>
+              <div className="card-body">
+                <form onSubmit={handleSubmit}>
+                  <div className="form-group">
+                    <label className="label">Agent</label>
+                    <select value={selectedAgent} onChange={(e) => setSelectedAgent(e.target.value)}>
+                      {AGENTS.map(agent => (
+                        <option key={agent.id} value={agent.id}>
+                          {agent.emoji} {agent.name}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="form-group">
+                    <label className="label">Task</label>
+                    <textarea
+                      rows={4}
+                      value={taskInput}
+                      onChange={(e) => setTaskInput(e.target.value)}
+                      placeholder="Enter task description..."
+                    />
+                  </div>
+                  <button type="submit" className="btn" disabled={isSubmitting}>
+                    {isSubmitting ? 'Submitting...' : 'Execute'}
+                  </button>
+                </form>
+
+                <div style={{ marginTop: '20px' }}>
+                  <div className="card-title" style={{ marginBottom: '12px' }}>Statistics</div>
+                  <div className="stat-grid">
+                    <div className="stat-card">
+                      <div className="stat-value">{stats.totalProcesses}</div>
+                      <div className="stat-label">Total</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="stat-value" style={{ color: 'var(--green)' }}>{stats.runningProcesses}</div>
+                      <div className="stat-label">Running</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="stat-value" style={{ color: 'var(--blue)' }}>{stats.completedProcesses}</div>
+                      <div className="stat-label">Completed</div>
+                    </div>
+                    <div className="stat-card">
+                      <div className="stat-value" style={{ color: 'var(--red)' }}>{stats.failedProcesses}</div>
+                      <div className="stat-label">Failed</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Middle Column */}
+            <div className="card" style={{ gridColumn: '2 / 3', gridRow: '1 / 2' }}>
+              <div className="tabs">
+                <button className={`tab ${activeTab === 'processes' ? 'active' : ''}`} onClick={() => setActiveTab('processes')}>Process Table</button>
+                <button className={`tab ${activeTab === 'graph' ? 'active' : ''}`} onClick={() => setActiveTab('graph')}>Execution Graph</button>
+              </div>
+              <div className="card-body" style={{ padding: 0 }}>
+                {activeTab === 'processes' && (
+                  <div style={{ padding: '16px' }}>
+                    <table className="process-table">
+                      <thead>
+                        <tr>
+                          <th>PID</th>
+                          <th>Agent</th>
+                          <th>State</th>
+                          <th>Task</th>
+                          <th>Updated</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {processes.length === 0 ? (
+                          <tr>
+                            <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text2)' }}>
+                              No processes yet
+                            </td>
+                          </tr>
+                        ) : (
+                          processes.map(proc => (
+                            <tr key={proc.pid}>
+                              <td style={{ fontFamily: 'monospace' }}>{proc.pid}</td>
+                              <td>{proc.agent_name || proc.agent}</td>
+                              <td>{getStatusBadge(proc.state || proc.current_state)}</td>
+                              <td>{proc.current_task || '-'}</td>
+                              <td style={{ color: 'var(--text2)' }}>
+                                {proc.updated_time ? new Date(proc.updated_time).toLocaleTimeString() : '-'}
+                              </td>
+                            </tr>
+                          ))
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+                {activeTab === 'graph' && (
+                  <div className="flow-container">
+                    <ReactFlow
+                      nodes={nodes}
+                      edges={edges}
+                      onNodesChange={onNodesChange}
+                      onEdgesChange={onEdgesChange}
+                      onConnect={(params) => setEdges((eds) => addEdge(params, eds))}
+                      nodeTypes={nodeTypes}
+                      fitView
+                    >
+                      <Background />
+                      <Controls />
+                      <MiniMap />
+                    </ReactFlow>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Right Column */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
+              <div className="card">
+                <div className="card-header">
+                  <div className="card-title">Shared Memory</div>
+                </div>
+                <div className="card-body">
+                  {Object.keys(memory).length === 0 ? (
+                    <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text2)' }}>
+                      No memory keys yet
+                    </div>
+                  ) : (
+                    Object.entries(memory).map(([ns, entries]) => (
+                      <div key={ns} style={{ marginBottom: '16px' }}>
+                        <div style={{ fontWeight: 600, color: 'var(--blue)', marginBottom: '8px' }}>{ns}</div>
+                        {Object.entries(entries).map(([k, v]) => (
+                          <div key={k} className="memory-item">
+                            <span className="memory-key">{k}</span>
+                            <span className="memory-value">{typeof v === 'string' ? v : JSON.stringify(v)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="card" style={{ flex: 1 }}>
+                <div className="card-header">
+                  <div className="card-title">Checkpoints & Events</div>
+                </div>
+                <div className="card-body">
+                  <div style={{ marginBottom: '16px' }}>
+                    <div style={{ marginBottom: '8px', fontWeight: 600, fontSize: '0.85rem' }}>Checkpoints</div>
+                    {checkpoints.length === 0 ? (
+                      <div style={{ color: 'var(--text2)', fontSize: '0.85rem' }}>No checkpoints yet</div>
+                    ) : (
+                      checkpoints.map(cp => (
+                        <div key={cp.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: '0.85rem' }}>
+                          <div style={{ fontWeight: 600 }}>{cp.name}</div>
+                          <div style={{ color: 'var(--text2)' }}>{new Date(cp.created_at).toLocaleString()}</div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+
+                  <div>
+                    <div style={{ marginBottom: '8px', fontWeight: 600, fontSize: '0.85rem' }}>Events</div>
+                    {events.length === 0 ? (
+                      <div style={{ color: 'var(--text2)', fontSize: '0.85rem' }}>No events yet</div>
+                    ) : (
+                      events.map((evt, i) => (
+                        <div key={i} style={{ padding: '4px 0', fontSize: '0.8rem', borderBottom: '1px solid var(--border)' }}>
+                          <span style={{ color: 'var(--blue)' }}>{evt.type}</span>
+                          <span style={{ color: 'var(--text2)', marginLeft: '8px' }}>
+                            {new Date(evt.timestamp).toLocaleTimeString()}
+                          </span>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Bottom Section - Dependency Graph */}
+            <div className="card" style={{ gridColumn: '1 / -1', height: '400px' }}>
+              <div className="card-header">
+                <div className="card-title">Dependency Graph</div>
+              </div>
+              <div className="card-body" style={{ padding: 0 }}>
+                <iframe
+                  src="/dependencies/visualize"
+                  style={{ width: '100%', height: '100%', border: 'none' }}
+                  title="Dependency Graph"
+                />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<Dashboard />);
+  </script>
+</body>
+</html>
