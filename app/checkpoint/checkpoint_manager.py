@@ -40,13 +40,20 @@ class CheckpointManager:
         with self._lock:
             connection = self._connect()
             try:
+                # If checkpoints table exists with the old schema (missing column 'id'), drop it
+                row = connection.execute("PRAGMA table_info(checkpoints)").fetchall()
+                if row:
+                    columns = {r["name"] for r in row}
+                    if "id" not in columns:
+                        connection.execute("DROP TABLE checkpoints")
+
                 connection.execute(
                     """
                     CREATE TABLE IF NOT EXISTS checkpoints (
-                        checkpoint_id TEXT PRIMARY KEY,
-                        target_id TEXT NOT NULL,
-                        payload TEXT NOT NULL,
-                        version INTEGER NOT NULL,
+                        id TEXT PRIMARY KEY,
+                        task_id TEXT NOT NULL,
+                        name TEXT NOT NULL,
+                        state TEXT NOT NULL,
                         created_at TEXT NOT NULL
                     )
                     """
@@ -56,24 +63,29 @@ class CheckpointManager:
                 if self._db_path != ":memory:":
                     connection.close()
 
-    def save_checkpoint(self, target_id: str, payload: dict[str, Any] | None = None, *, manual: bool = False) -> Checkpoint:
-        """Persist a checkpoint for a target identifier."""
+    def create_checkpoint(self, task_id: str, name: str, state: dict[str, Any]) -> Checkpoint:
+        """Persist a checkpoint for a task."""
         with self._lock:
-            checkpoint_id = self._build_checkpoint_id(target_id)
-            version = self._next_version(target_id)
-            serialized = json.dumps(payload or {}, sort_keys=True)
+            checkpoint_id = self._build_checkpoint_id(task_id)
+            serialized = json.dumps(state, sort_keys=True)
             now = self._now()
             connection = self._connect()
             try:
                 connection.execute(
-                    "INSERT INTO checkpoints(checkpoint_id, target_id, payload, version, created_at) VALUES(?, ?, ?, ?, ?)",
-                    (checkpoint_id, target_id, serialized, version, now),
+                    "INSERT INTO checkpoints(id, task_id, name, state, created_at) VALUES(?, ?, ?, ?, ?)",
+                    (checkpoint_id, task_id, name, serialized, now),
                 )
                 connection.commit()
             finally:
                 if self._db_path != ":memory:":
                     connection.close()
-            return Checkpoint(checkpoint_id=checkpoint_id, target_id=target_id, payload=payload or {}, created_at=datetime.fromisoformat(now))
+            return Checkpoint(
+                id=checkpoint_id,
+                task_id=task_id,
+                name=name,
+                state=state,
+                created_at=datetime.fromisoformat(now)
+            )
 
     def get_checkpoint(self, checkpoint_id: str) -> Checkpoint | None:
         """Retrieve a previously saved checkpoint."""
@@ -81,27 +93,50 @@ class CheckpointManager:
             connection = self._connect()
             try:
                 row = connection.execute(
-                    "SELECT checkpoint_id, target_id, payload, version, created_at FROM checkpoints WHERE checkpoint_id = ?",
+                    "SELECT id, task_id, name, state, created_at FROM checkpoints WHERE id = ?",
                     (checkpoint_id,),
                 ).fetchone()
                 if row is None:
                     return None
                 return Checkpoint(
-                    checkpoint_id=row["checkpoint_id"],
-                    target_id=row["target_id"],
-                    payload=json.loads(row["payload"]),
+                    id=row["id"],
+                    task_id=row["task_id"],
+                    name=row["name"],
+                    state=json.loads(row["state"]),
                     created_at=datetime.fromisoformat(row["created_at"]),
                 )
             finally:
                 if self._db_path != ":memory:":
                     connection.close()
 
+    def list_checkpoints(self) -> list[Checkpoint]:
+        """List all checkpoints."""
+        with self._lock:
+            connection = self._connect()
+            try:
+                rows = connection.execute(
+                    "SELECT id, task_id, name, state, created_at FROM checkpoints ORDER BY created_at DESC"
+                ).fetchall()
+                return [
+                    Checkpoint(
+                        id=row["id"],
+                        task_id=row["task_id"],
+                        name=row["name"],
+                        state=json.loads(row["state"]),
+                        created_at=datetime.fromisoformat(row["created_at"]),
+                    )
+                    for row in rows
+                ]
+            finally:
+                if self._db_path != ":memory:":
+                    connection.close()
+
     def restore(self, checkpoint_id: str) -> dict[str, Any]:
-        """Restore payload from a checkpoint."""
+        """Restore state from a checkpoint."""
         checkpoint = self.get_checkpoint(checkpoint_id)
         if checkpoint is None:
             raise KeyError(f"Checkpoint {checkpoint_id} was not found")
-        return checkpoint.payload
+        return checkpoint.state
 
     def get_versions(self, target_id: str) -> list[str]:
         """Return the full checkpoint history for a target."""
@@ -109,10 +144,10 @@ class CheckpointManager:
             connection = self._connect()
             try:
                 rows = connection.execute(
-                    "SELECT checkpoint_id FROM checkpoints WHERE target_id = ? ORDER BY version ASC",
+                    "SELECT id FROM checkpoints WHERE task_id = ? ORDER BY created_at ASC",
                     (target_id,),
                 ).fetchall()
-                return [row["checkpoint_id"] for row in rows]
+                return [row["id"] for row in rows]
             finally:
                 if self._db_path != ":memory:":
                     connection.close()
@@ -124,46 +159,17 @@ class CheckpointManager:
             return None
         return self.get_checkpoint(versions[-1])
 
-    def cleanup_old(self, keep_latest: int = 3) -> int:
-        """Remove older checkpoints while preserving the latest versions per target."""
-        with self._lock:
-            connection = self._connect()
-            try:
-                rows = connection.execute(
-                    "SELECT checkpoint_id, target_id FROM checkpoints ORDER BY created_at ASC"
-                ).fetchall()
-                by_target: dict[str, list[str]] = {}
-                for row in rows:
-                    by_target.setdefault(row["target_id"], []).append(row["checkpoint_id"])
-                to_delete: list[str] = []
-                for target_id, checkpoint_ids in by_target.items():
-                    if len(checkpoint_ids) <= keep_latest:
-                        continue
-                    to_delete.extend(checkpoint_ids[:-keep_latest])
-                if to_delete:
-                    placeholders = ",".join("?" for _ in to_delete)
-                    connection.execute(f"DELETE FROM checkpoints WHERE checkpoint_id IN ({placeholders})", to_delete)
-                    connection.commit()
-                return len(to_delete)
-            finally:
-                if self._db_path != ":memory:":
-                    connection.close()
-
-    def _next_version(self, target_id: str) -> int:
-        connection = self._connect()
-        try:
-            latest = connection.execute(
-                "SELECT MAX(version) AS version FROM checkpoints WHERE target_id = ?",
-                (target_id,),
-            ).fetchone()
-            return 1 if latest is None or latest["version"] is None else int(latest["version"]) + 1
-        finally:
-            if self._db_path != ":memory:":
-                connection.close()
+    def save_checkpoint(self, target_id: str, payload: dict[str, Any] | None = None, *, manual: bool = False) -> Checkpoint:
+        """Backward compatibility method."""
+        return self.create_checkpoint(
+            task_id=target_id,
+            name=f"Checkpoint for {target_id}",
+            state=payload or {}
+        )
 
     @staticmethod
-    def _build_checkpoint_id(target_id: str) -> str:
-        return f"cp-{target_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
+    def _build_checkpoint_id(task_id: str) -> str:
+        return f"cp-{task_id}-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S%f')}"
 
     @staticmethod
     def _now() -> str:

@@ -6,7 +6,9 @@ from typing import Any
 
 from app.checkpoint.checkpoint_manager import CheckpointManager
 from app.dependency.dependency_manager import DependencyManager
+from app.models.task import Task
 from app.runtime.execution_engine import ExecutionEngine
+from app.supervisor.supervisor import Supervisor
 
 
 class RecoveryEngine:
@@ -26,7 +28,7 @@ class RecoveryEngine:
     def create_checkpoint(self, target_id: str, payload: dict[str, Any] | None = None) -> str:
         """Create and store a checkpoint for a target."""
         checkpoint = self.checkpoint_manager.save_checkpoint(target_id, payload)
-        return checkpoint.checkpoint_id
+        return checkpoint.id
 
     def restore_checkpoint(self, checkpoint_id: str) -> dict[str, Any]:
         """Restore a checkpoint payload."""
@@ -41,3 +43,12 @@ class RecoveryEngine:
         if payload is not None:
             self.create_checkpoint(failed_agent_id, payload)
         return affected
+
+    def recover_task(self, task: Task, supervisor: Supervisor) -> bool:
+        """Recover a failed task by re-running it."""
+        try:
+            task.mark_running()
+            result = supervisor.run_task(task.task_id)
+            return result.success
+        except Exception:
+            return False

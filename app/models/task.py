@@ -47,3 +47,17 @@ class Task:
         self.status = TaskStatus.FAILED
         self.error = error
         self.updated_at = datetime.now(timezone.utc)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert task to dictionary."""
+        return {
+            "task_id": self.task_id,
+            "name": self.name,
+            "agent_id": self.agent_id,
+            "payload": self.payload,
+            "status": self.status.value,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat(),
+            "result": self.result,
+            "error": self.error,
+        }
