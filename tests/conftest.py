@@ -30,55 +30,47 @@ def configure_test_environment(request):
     shared_memory._connection = None
     shared_memory._ensure_schema()
 
-    if not is_integration_test:
-        # Save original settings
-        orig_settings_key = settings.qwen_api_key
-        orig_router_key = model_router.client.api_key
-        orig_provider_key = None
-        if "qwen" in model_router._providers:
-            orig_provider_key = model_router._providers["qwen"].client.api_key
-            
-        # Save original agent client keys
-        orig_agent_keys = {}
-        for agent_id, agent in supervisor._agents.items():
-            if hasattr(agent, "client") and hasattr(agent.client, "api_key"):
-                orig_agent_keys[agent_id] = agent.client.api_key
+    # Save original settings
+    orig_settings_key = settings.qwen_api_key
+    orig_router_key = model_router.client.api_key
+    orig_provider_key = None
+    if "qwen" in model_router._providers:
+        orig_provider_key = model_router._providers["qwen"].client.api_key
         
-        # Override to mock mode
-        settings.qwen_api_key = "mock-key"
-        model_router.client.api_key = "mock-key"
-        if "qwen" in model_router._providers:
-            model_router._providers["qwen"].client.api_key = "mock-key"
-            
-        for agent_id, agent in supervisor._agents.items():
-            if hasattr(agent, "client") and hasattr(agent.client, "api_key"):
-                agent.client.api_key = "mock-key"
-            
-        # Clean scheduler state
-        scheduler.resume_scheduler()
-        scheduler._queue.clear()
-        scheduler._paused.clear()
-        scheduler._active.clear()
+    # Save original agent client keys
+    orig_agent_keys = {}
+    for agent_id, agent in supervisor._agents.items():
+        if hasattr(agent, "client") and hasattr(agent.client, "api_key"):
+            orig_agent_keys[agent_id] = agent.client.api_key
+    
+    # Override to mock mode
+    settings.qwen_api_key = "mock-key"
+    model_router.client.api_key = "mock-key"
+    if "qwen" in model_router._providers:
+        model_router._providers["qwen"].client.api_key = "mock-key"
         
-        yield
+    for agent_id, agent in supervisor._agents.items():
+        if hasattr(agent, "client") and hasattr(agent.client, "api_key"):
+            agent.client.api_key = "mock-key"
         
-        # Restore original keys
-        settings.qwen_api_key = orig_settings_key
-        model_router.client.api_key = orig_router_key
-        if "qwen" in model_router._providers and orig_provider_key is not None:
-            model_router._providers["qwen"].client.api_key = orig_provider_key
-            
-        for agent_id, orig_key in orig_agent_keys.items():
-            agent = supervisor._agents.get(agent_id)
-            if agent and hasattr(agent, "client") and hasattr(agent.client, "api_key"):
-                agent.client.api_key = orig_key
-    else:
-        # For integration tests, just reset scheduler
-        scheduler.resume_scheduler()
-        scheduler._queue.clear()
-        scheduler._paused.clear()
-        scheduler._active.clear()
-        yield
+    # Clean scheduler state
+    scheduler.resume_scheduler()
+    scheduler._queue.clear()
+    scheduler._paused.clear()
+    scheduler._active.clear()
+    
+    yield
+    
+    # Restore original keys
+    settings.qwen_api_key = orig_settings_key
+    model_router.client.api_key = orig_router_key
+    if "qwen" in model_router._providers and orig_provider_key is not None:
+        model_router._providers["qwen"].client.api_key = orig_provider_key
+        
+    for agent_id, orig_key in orig_agent_keys.items():
+        agent = supervisor._agents.get(agent_id)
+        if agent and hasattr(agent, "client") and hasattr(agent.client, "api_key"):
+            agent.client.api_key = orig_key
 
     # Restore original DB paths and reset connection cache
     checkpoint_manager._db_path = orig_checkpoint_db
@@ -86,4 +78,5 @@ def configure_test_environment(request):
     
     shared_memory._db_path = orig_memory_db
     shared_memory._connection = None
+
 

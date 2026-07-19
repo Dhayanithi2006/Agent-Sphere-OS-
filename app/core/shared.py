@@ -38,6 +38,6 @@ tool_manager = ToolManager(tool_registry)
 execution_engine = ExecutionEngine()
 process_sandbox = ProcessSandbox()
 shared_memory = SharedMemory()
-supervisor = Supervisor(process_manager=process_manager)
+supervisor = Supervisor(process_manager=process_manager, shared_memory=shared_memory)
 
 
