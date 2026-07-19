@@ -25,7 +25,7 @@ class HistoryCheckingMockAgent(BaseAgent):
             return json.dumps({
                 "thought": "I need data", 
                 "tool_required": True, 
-                "tool": "test_os_tool", 
+                "tool": "test_infinite_loop_tool", 
                 "arguments": {"x": "fastapi"}
             })
         else:
@@ -45,7 +45,7 @@ async def test_execution_engine_empty_payload_history_injection():
     
     from app.core.shared import tool_registry
     tool_registry.register_tool(
-        tool_id="test_os_tool",
+        tool_id="test_infinite_loop_tool",
         name="Test Tool",
         description="test",
         func=lambda **kwargs: "Mock Result"
