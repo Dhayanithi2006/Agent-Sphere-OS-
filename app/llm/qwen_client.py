@@ -164,41 +164,70 @@ class QwenClient:
                 # Smart mock JSON generation for tests
                 prompt_lower = prompt_str.lower()
                 
-                if "showrunner_planner" in prompt_lower or "movie_goal" in prompt_lower:
-                    stub_response = json.dumps({"scenes": [{"scene_number": 1, "description": "Scene 1"}, {"scene_number": 2, "description": "Scene 2"}, {"scene_number": 3, "description": "Scene 3"}]})
-                elif "showrunner_script" in prompt_lower or "camera_notes" in prompt_lower:
-                    stub_response = json.dumps({"scenes": [{"scene_number": 1, "visual_action": "battle", "camera_notes": "zoom"}, {"scene_number": 2, "visual_action": "battle", "camera_notes": "zoom"}, {"scene_number": 3, "visual_action": "battle", "camera_notes": "zoom"}]})
-                elif "showrunner_storyboard" in prompt_lower:
-                    stub_response = json.dumps([{"scene_number": 1}, {"scene_number": 2}, {"scene_number": 3}])
-                elif "showrunner_scene" in prompt_lower or "duration" in prompt_lower:
-                    stub_response = json.dumps([{"scene_number": 1, "duration": 5}, {"scene_number": 2, "duration": 5}, {"scene_number": 3, "duration": 5}])
-                elif "showrunner_prompt" in prompt_lower or "photorealistic" in prompt_lower:
-                    stub_response = json.dumps([{"scene_number": 1, "prompt": "photorealistic cinematic battle"}, {"scene_number": 2, "prompt": "photorealistic cinematic battle"}, {"scene_number": 3, "prompt": "photorealistic cinematic battle"}])
-                elif "showrunner_video" in prompt_lower:
+                if "expert screenwriter" in prompt_lower or "production screenplay" in prompt_lower:
+                    stub_response = json.dumps({
+                        "title": "Space Voyage",
+                        "scenes": [
+                            {"scene_number": 1, "visual_action": "battle", "camera_notes": "zoom", "dialogues": []},
+                            {"scene_number": 2, "visual_action": "battle", "camera_notes": "zoom", "dialogues": []},
+                            {"scene_number": 3, "visual_action": "battle", "camera_notes": "zoom", "dialogues": []}
+                        ]
+                    })
+                elif "director of an" in prompt_lower or "movie_goal" in prompt_lower or "target audience" in prompt_lower:
+                    stub_response = json.dumps({
+                        "title": "Space Voyage",
+                        "genre": "Sci-Fi",
+                        "scenes": [
+                            {"scene_number": 1, "description": "Scene 1", "goal": "Goal 1", "characters": []},
+                            {"scene_number": 2, "description": "Scene 2", "goal": "Goal 2", "characters": []},
+                            {"scene_number": 3, "description": "Scene 3", "goal": "Goal 3", "characters": []}
+                        ]
+                    })
+                elif "storyboard artist" in prompt_lower or "visual panels" in prompt_lower or "showrunner_storyboard" in prompt_lower:
+                    stub_response = json.dumps([
+                        {"scene_number": 1, "aspect_ratio": "16:9", "composition": "Wide-angle", "colors": "Cold blues", "description": "Explorer looking at glowing light"},
+                        {"scene_number": 2, "aspect_ratio": "16:9", "composition": "Wide-angle", "colors": "Cold blues", "description": "Explorer looking at glowing light"},
+                        {"scene_number": 3, "aspect_ratio": "16:9", "composition": "Wide-angle", "colors": "Cold blues", "description": "Explorer looking at glowing light"}
+                    ])
+                elif "prompt engineer" in prompt_lower or "photorealistic" in prompt_lower or "showrunner_prompt" in prompt_lower:
+                    stub_response = json.dumps([
+                        {"scene_number": 1, "prompt": "photorealistic cinematic battle, 8k resolution", "camera": "Wide tracking", "lighting": "Cold blue", "duration": 5},
+                        {"scene_number": 2, "prompt": "photorealistic cinematic battle, 8k resolution", "camera": "Wide tracking", "lighting": "Cold blue", "duration": 5},
+                        {"scene_number": 3, "prompt": "photorealistic cinematic battle, 8k resolution", "camera": "Wide tracking", "lighting": "Cold blue", "duration": 5}
+                    ])
+                elif "technical director" in prompt_lower or "scene parameters" in prompt_lower or "showrunner_scene" in prompt_lower or "duration" in prompt_lower:
+                    stub_response = json.dumps([
+                        {"scene_number": 1, "prompt": "Space ship flight", "camera": "Wide tracking", "lighting": "Cold blue", "duration": 5},
+                        {"scene_number": 2, "prompt": "Space ship flight", "camera": "Wide tracking", "lighting": "Cold blue", "duration": 5},
+                        {"scene_number": 3, "prompt": "Space ship flight", "camera": "Wide tracking", "lighting": "Cold blue", "duration": 5}
+                    ])
+                elif "video" in prompt_lower or "showrunner_video" in prompt_lower:
                     # Create temporary placeholder files for test assertions
                     os.makedirs("app/static", exist_ok=True)
                     for path in ["app/static/clip1.mp4", "app/static/clip2.mp4", "app/static/clip3.mp4"]:
                         with open(path, "w") as f:
                             f.write("mock-video")
                     stub_response = json.dumps(["app/static/clip1.mp4", "app/static/clip2.mp4", "app/static/clip3.mp4"])
-                elif "showrunner_audio" in prompt_lower:
+                elif "audio" in prompt_lower or "showrunner_audio" in prompt_lower:
                     # Create placeholder files
                     os.makedirs("app/static", exist_ok=True)
                     for path in ["app/static/audio1.wav", "app/static/audio2.wav", "app/static/audio3.wav", "app/static/music.mp3"]:
                         with open(path, "w") as f:
                             f.write("mock-audio")
                     stub_response = json.dumps({"audio_clips": ["app/static/audio1.wav", "app/static/audio2.wav", "app/static/audio3.wav"], "music_clip": "app/static/music.mp3"})
-                elif "showrunner_subtitle" in prompt_lower:
+                elif "subtitle" in prompt_lower or "showrunner_subtitle" in prompt_lower:
                     path = "app/static/movie.srt"
                     with open(path, "w") as f:
                         f.write("mock-sub")
                     stub_response = path
-                elif "showrunner_editor" in prompt_lower:
+                elif "editor" in prompt_lower or "showrunner_editor" in prompt_lower:
                     path = "app/static/movie.mp4"
                     with open(path, "w") as f:
                         f.write("mock-movie")
                     stub_response = path
-                elif "showrunner_reviewer" in prompt_lower:
+                elif "film director" in prompt_lower or "director checking" in prompt_lower or "showrunner_director" in prompt_lower:
+                    stub_response = "Director Audit Report: APPROVED FOR GEN"
+                elif "reviewer" in prompt_lower or "showrunner_reviewer" in prompt_lower:
                     stub_response = "APPROVED"
                 else:
                     stub_response = f"[qwen] stub: {prompt_str}"
