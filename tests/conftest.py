@@ -1,6 +1,6 @@
 import pytest
 import asyncio
-from app.core.shared import scheduler, model_router, supervisor, event_bus
+from app.core.shared import scheduler, model_router, supervisor, event_bus, checkpoint_manager, shared_memory
 from app.core.config import settings
 
 @pytest.fixture(autouse=True)
@@ -17,6 +17,19 @@ def configure_test_environment(request):
     # Check if the test is inside the end-to-end integration test file
     is_integration_test = "test_showrunner_pipeline" in request.module.__name__
     
+    # Save original DB paths
+    orig_checkpoint_db = checkpoint_manager._db_path
+    orig_memory_db = shared_memory._db_path
+
+    # Override to in-memory databases for tests to prevent Windows file locking issues with uvicorn
+    checkpoint_manager._db_path = ":memory:"
+    checkpoint_manager._connection = None
+    checkpoint_manager._ensure_schema()
+
+    shared_memory._db_path = ":memory:"
+    shared_memory._connection = None
+    shared_memory._ensure_schema()
+
     if not is_integration_test:
         # Save original settings
         orig_settings_key = settings.qwen_api_key
@@ -66,3 +79,11 @@ def configure_test_environment(request):
         scheduler._paused.clear()
         scheduler._active.clear()
         yield
+
+    # Restore original DB paths and reset connection cache
+    checkpoint_manager._db_path = orig_checkpoint_db
+    checkpoint_manager._connection = None
+    
+    shared_memory._db_path = orig_memory_db
+    shared_memory._connection = None
+

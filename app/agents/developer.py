@@ -168,6 +168,16 @@ def _write_workspace_files(task_id: str, files: list[dict[str, str]]) -> str:
     return ""
 
 
+class AgentString(str):
+    """A string subclass that allows attaching custom metadata (e.g. parsed files) for the UI,
+    while still behaving exactly like a string to ensure backward compatibility with the execution engine.
+    """
+    def __new__(cls, value: str, metadata: dict[str, Any] | None = None) -> AgentString:
+        obj = super().__new__(cls, value)
+        obj.metadata = metadata or {}
+        return obj
+
+
 class DeveloperAgent(BaseAgent):
     """Produces implementation code, writes files to workspace, and returns structured build output."""
 
@@ -181,7 +191,7 @@ class DeveloperAgent(BaseAgent):
         from app.core.shared import model_router
         return model_router
 
-    def execute(self, payload: dict[str, Any] | None = None) -> dict[str, Any]:
+    def execute(self, payload: dict[str, Any] | None = None) -> str:
         payload = payload or {}
         requirement = payload.get("requirement", "") or payload.get("task", "")
         task_id = payload.get("task_id", str(uuid.uuid4()))
@@ -212,7 +222,7 @@ class DeveloperAgent(BaseAgent):
                 break
         summary = " ".join(summary_lines)[:300] or "Build completed successfully."
 
-        return {
+        metadata = {
             "output_type": output_type,   # "web" | "api" | "architecture" | "writing" | "code"
             "files": files,               # [{filename, language, content}]
             "preview_url": preview_url,   # e.g. /static/workspace/<task_id>/index.html
@@ -222,3 +232,5 @@ class DeveloperAgent(BaseAgent):
             "task_id": task_id,
             "file_count": len(files),
         }
+
+        return AgentString(raw_output, metadata=metadata)

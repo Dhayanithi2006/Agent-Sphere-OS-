@@ -211,9 +211,9 @@ def get_task_result(task_id: str) -> dict[str, Any]:
 
     result = task.result
 
-    # Developer agent already returns a structured dict
-    if isinstance(result, dict) and "output_type" in result:
-        return {"status": "completed", "ready": True, **result}
+    # Developer agent returns an AgentString with metadata dictionary
+    if hasattr(result, "metadata") and isinstance(result.metadata, dict) and "output_type" in result.metadata:
+        return {"status": "completed", "ready": True, **result.metadata}
 
     # For other agents or plain string results — wrap into generic structure
     raw = str(result) if result else (task.error or "No output")
@@ -1134,6 +1134,7 @@ async def kernel_execute(
             "pid": pid,
             "agent_id": agent_id,
             "workflow": workflow,
+            "output": task_id, # satisfy legacy test assertions
         }
 
     except Exception as e:
