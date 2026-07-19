@@ -7,11 +7,23 @@ synchronously — so task completion can be asserted immediately after the
 
 from __future__ import annotations
 
+import os
+# Force mock development mode for fast local unit testing without hitting DashScope API
+os.environ["QWEN_API_KEY"] = "mock-key"
+os.environ["DASHSCOPE_API_KEY"] = "mock-key"
+os.environ["AGENTSPHERE_ENV"] = "development"
+
 import json
-
+import pytest
 from fastapi.testclient import TestClient
-
 from main import app
+
+@pytest.fixture
+def client():
+    """Session context manager TestClient to trigger FastAPI lifespan setup/shutdown."""
+    with TestClient(app) as c:
+        yield c
+
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -27,17 +39,15 @@ def _assign(client: TestClient, agent_id: str, input_value: str) -> dict:
 
 # ── 1. Async task submission ──────────────────────────────────────────────────
 
-def test_assign_returns_task_id_and_queued_status():
+def test_assign_returns_task_id_and_queued_status(client):
     """/assign must return task_id and a queued status immediately."""
-    client = TestClient(app)
     data = _assign(client, "planner", "Design the memory subsystem")
     assert "task_id" in data
     assert len(data["task_id"]) > 0
 
 
-def test_assign_all_five_agents_succeed():
+def test_assign_all_five_agents_succeed(client):
     """Every registered agent must accept a task without error."""
-    client = TestClient(app)
     cases = [
         ("planner",    "Plan a caching layer"),
         ("researcher", "OAuth2 token patterns"),
@@ -52,22 +62,18 @@ def test_assign_all_five_agents_succeed():
 
 # ── 2. Payload key mapping ────────────────────────────────────────────────────
 
-def test_researcher_payload_maps_to_topic_key():
+def test_researcher_payload_maps_to_topic_key(client):
     """The 'input' field sent by the UI must be mapped to researcher's 'topic' key."""
-    client = TestClient(app)
     data = _assign(client, "researcher", "distributed tracing")
     task_id = data["task_id"]
 
     task = client.get(f"/tasks/{task_id}").json()
-    # TestClient runs BG tasks synchronously; task should be completed
     assert task["status"] == "completed"
-    # The QwenClient mock prefixes the prompt — check it contains the topic
     assert "distributed tracing" in (task["result"] or "").lower() or "[qwen]" in (task["result"] or "")
 
 
-def test_developer_payload_maps_to_requirement_key():
+def test_developer_payload_maps_to_requirement_key(client):
     """The 'input' field must map to developer's 'requirement' payload key."""
-    client = TestClient(app)
     data = _assign(client, "developer", "implement rate limiter")
     task = client.get(f"/tasks/{data['task_id']}").json()
     assert task["status"] == "completed"
@@ -76,9 +82,8 @@ def test_developer_payload_maps_to_requirement_key():
 
 # ── 3. Task lifecycle ─────────────────────────────────────────────────────────
 
-def test_task_status_endpoint_reachable_after_submission():
+def test_task_status_endpoint_reachable_after_submission(client):
     """/tasks/{task_id} must respond with a valid status after submission."""
-    client = TestClient(app)
     task_id = _assign(client, "planner", "Build memory versioning")["task_id"]
 
     resp = client.get(f"/tasks/{task_id}")
@@ -88,9 +93,8 @@ def test_task_status_endpoint_reachable_after_submission():
     assert data["status"] in ("pending", "running", "completed", "failed")
 
 
-def test_task_completes_and_result_is_non_empty():
+def test_task_completes_and_result_is_non_empty(client):
     """After execution, the task result must be a non-empty string."""
-    client = TestClient(app)
     task_id = _assign(client, "planner", "Build dashboard")["task_id"]
 
     task = client.get(f"/tasks/{task_id}").json()
@@ -99,31 +103,27 @@ def test_task_completes_and_result_is_non_empty():
     assert len(str(task["result"])) > 0
 
 
-def test_task_result_stored_in_shared_memory():
+def test_task_result_stored_in_shared_memory(client):
     """After task completion, the result should appear in /memory under the task key."""
-    client = TestClient(app)
     task_id = _assign(client, "planner", "Build shared memory audit")["task_id"]
 
     memory = client.get("/memory").json()
     all_keys = str(memory)
-    # The supervisor writes task:<task_id> and planner:goal keys
     assert task_id in all_keys or "planner" in all_keys
 
 
 # ── 4. Process table ─────────────────────────────────────────────────────────
 
-def test_process_table_grows_after_task_submission():
+def test_process_table_grows_after_task_submission(client):
     """Each /assign call should add exactly one entry to the process table."""
-    client = TestClient(app)
     before = len(client.get("/processes").json())
     _assign(client, "developer", "implement cache invalidation")
     after = len(client.get("/processes").json())
     assert after == before + 1
 
 
-def test_completed_process_has_expected_fields():
+def test_completed_process_has_expected_fields(client):
     """Process table entries must contain pid, agent_name, state and current_task."""
-    client = TestClient(app)
     _assign(client, "tester", "auth middleware tests")
     processes = client.get("/processes").json()
     assert len(processes) >= 1
@@ -131,19 +131,15 @@ def test_completed_process_has_expected_fields():
     assert "pid"          in last
     assert "agent_name"   in last
     assert "current_task" in last
-    # state field exists (value may differ by serializer)
     assert "state" in last or "current_state" in last
 
 
 # ── 5. SSE stream ─────────────────────────────────────────────────────────────
 
-def test_stream_endpoint_returns_event_stream_content_type():
+def test_stream_endpoint_returns_event_stream_content_type(client):
     """/stream must respond with text/event-stream content-type."""
     import json as _json
 
-    client = TestClient(app)
-
-    # Use once=true so the stream generator terminates immediately after one frame.
     resp = client.get("/stream?once=true")
     assert resp.status_code == 200
     assert "text/event-stream" in resp.headers.get("content-type", "")
@@ -151,7 +147,6 @@ def test_stream_endpoint_returns_event_stream_content_type():
     content = resp.text
     assert content.startswith("data:")
     
-    # Parse the data event
     payload = _json.loads(content[5:].strip())
     assert "processes"   in payload
     assert "supervisor"  in payload
@@ -160,9 +155,8 @@ def test_stream_endpoint_returns_event_stream_content_type():
 
 # ── 6. Dashboard UI ───────────────────────────────────────────────────────────
 
-def test_dashboard_route_returns_html():
+def test_dashboard_route_returns_html(client):
     """/dashboard must serve a valid HTML page."""
-    client = TestClient(app)
     resp = client.get("/dashboard")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]
@@ -171,9 +165,8 @@ def test_dashboard_route_returns_html():
     assert "agentsphere" in body
 
 
-def test_dashboard_contains_agent_select_and_form():
+def test_dashboard_contains_agent_select_and_form(client):
     """The dashboard HTML must include the agent selection form elements."""
-    client = TestClient(app)
     body = client.get("/dashboard").text
     assert "agent-select"  in body
     assert "task-input"    in body
@@ -182,9 +175,8 @@ def test_dashboard_contains_agent_select_and_form():
     assert "memory-viewer" in body
 
 
-def test_dashboard_references_sse_stream_endpoint():
+def test_dashboard_references_sse_stream_endpoint(client):
     """The dashboard JS must connect to the /stream SSE endpoint."""
-    client = TestClient(app)
     body = client.get("/dashboard").text
     assert "/stream" in body
     assert "EventSource" in body
@@ -192,9 +184,8 @@ def test_dashboard_references_sse_stream_endpoint():
 
 # ── 7. CORS ───────────────────────────────────────────────────────────────────
 
-def test_cors_headers_present_on_preflight():
+def test_cors_headers_present_on_preflight(client):
     """CORS preflight OPTIONS must be accepted and return allow-origin header."""
-    client = TestClient(app)
     resp = client.options(
         "/assign",
         headers={
@@ -207,9 +198,8 @@ def test_cors_headers_present_on_preflight():
     assert "access-control-allow-origin" in resp.headers
 
 
-def test_cors_header_on_regular_get():
+def test_cors_header_on_regular_get(client):
     """Standard GET requests should carry CORS allow-origin header."""
-    client = TestClient(app)
     resp = client.get("/health", headers={"Origin": "http://localhost:3000"})
     assert resp.status_code == 200
     assert "access-control-allow-origin" in resp.headers
@@ -217,9 +207,8 @@ def test_cors_header_on_regular_get():
 
 # ── 8. Dependency visualization endpoint ─────────────────────────────────────
 
-def test_dependencies_visualize_returns_pyvis_html():
+def test_dependencies_visualize_returns_pyvis_html(client):
     """/dependencies/visualize must return HTML containing the pyvis network."""
-    client = TestClient(app)
     resp = client.get("/dependencies/visualize")
     assert resp.status_code == 200
     assert "text/html" in resp.headers["content-type"]

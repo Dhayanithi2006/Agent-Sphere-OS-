@@ -3,15 +3,26 @@
 from __future__ import annotations
 
 import time
+import random
+import os
+import asyncio
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Generator, Optional
+from typing import Any, AsyncGenerator, Generator, Optional, Callable, List, Dict, Union
 
-from openai import OpenAI, AsyncOpenAI
+import httpx
+from openai import (
+    OpenAI,
+    AsyncOpenAI,
+    OpenAIError,
+    APIStatusError,
+    APITimeoutError,
+    APIConnectionError,
+    AuthenticationError,
+)
 from openai.types.chat import ChatCompletion, ChatCompletionChunk
 
 from app.core.config import settings
 from app.core.logger import get_logger
-
 
 logger = get_logger("agentsphere.llm.qwen")
 
@@ -25,6 +36,15 @@ class TokenUsage:
 
 class QwenClient:
     """OpenAI-compatible client for Qwen Cloud APIs with streaming, retries, and token tracking."""
+
+    base_url: str
+    api_key: str | None
+    model: str
+    max_retries: int
+    timeout: float
+    client: OpenAI
+    async_client: AsyncOpenAI
+    total_usage: TokenUsage
 
     def __init__(
         self,
@@ -53,18 +73,67 @@ class QwenClient:
             timeout=self.timeout,
         )
         self.total_usage = TokenUsage(prompt_tokens=0, completion_tokens=0, total_tokens=0)
+        logger.info("=" * 50)
+        logger.info(f"Environment : {os.getenv('AGENTSPHERE_ENV')}")
+        logger.info(f"API Loaded  : {bool(self.api_key)}")
+        logger.info(f"Model       : {self.model}")
+        logger.info(f"Base URL    : {self.base_url}")
+        logger.info("=" * 50)
 
-    def _retry(self, func: callable, *args, **kwargs) -> Any:
-        """Execute a function with retry logic."""
+    def _raise_auth_error(self, message: str) -> None:
+        """Raise an explicit AuthenticationError using a dummy request and response."""
+        req = httpx.Request("POST", f"{self.base_url}/chat/completions")
+        resp = httpx.Response(status_code=401, request=req)
+        raise AuthenticationError(message=message, response=resp, body=None)
+
+    def _is_retryable(self, e: Exception) -> bool:
+        """Determine if an exception is retryable (429, 500, 502, 503, 504, connection/timeout errors)."""
+        if isinstance(e, (APITimeoutError, APIConnectionError)):
+            return True
+        if isinstance(e, APIStatusError):
+            return e.status_code in {429, 500, 502, 503, 504}
+        return False
+
+    def _retry(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Execute a synchronous function with retry logic including exponential backoff and jitter."""
         last_exception: Exception | None = None
         for attempt in range(self.max_retries):
             try:
                 return func(*args, **kwargs)
             except Exception as e:
                 last_exception = e
+                if not self._is_retryable(e):
+                    logger.error(f"Non-retryable exception encountered: {e}")
+                    raise e
+
                 logger.warning(f"Attempt {attempt + 1}/{self.max_retries} failed: {e}")
                 if attempt < self.max_retries - 1:
-                    time.sleep(2 ** attempt)
+                    delay = (2**attempt) + random.uniform(0, 1.0)
+                    logger.info(f"Sleeping for {delay:.2f} seconds before retrying...")
+                    time.sleep(delay)
+
+        if last_exception is not None:
+            raise last_exception
+        raise RuntimeError("Max retries exceeded with no exception raised")
+
+    async def _aretry(self, func: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Execute an asynchronous function with retry logic including exponential backoff and jitter."""
+        last_exception: Exception | None = None
+        for attempt in range(self.max_retries):
+            try:
+                return await func(*args, **kwargs)
+            except Exception as e:
+                last_exception = e
+                if not self._is_retryable(e):
+                    logger.error(f"Non-retryable exception encountered in async request: {e}")
+                    raise e
+
+                logger.warning(f"Async attempt {attempt + 1}/{self.max_retries} failed: {e}")
+                if attempt < self.max_retries - 1:
+                    delay = (2**attempt) + random.uniform(0, 1.0)
+                    logger.info(f"Async sleeping for {delay:.2f} seconds before retrying...")
+                    await asyncio.sleep(delay)
+
         if last_exception is not None:
             raise last_exception
         raise RuntimeError("Max retries exceeded with no exception raised")
@@ -79,17 +148,27 @@ class QwenClient:
         **kwargs: Any,
     ) -> str | Generator[str, None, None]:
         """Generate a response using the configured LLM endpoint."""
-        if not self.api_key or self.api_key == "mock-key":
-            if isinstance(prompt, list):
-                prompt_str = prompt[-1]["content"] if prompt else ""
+        import sys
+        env = os.getenv("AGENTSPHERE_ENV", "production").lower()
+        is_dev = env == "development" or "pytest" in sys.modules
+        is_mock_key = not self.api_key or self.api_key == "mock-key"
+
+        if is_mock_key:
+            if is_dev:
+                if isinstance(prompt, list):
+                    prompt_str = prompt[-1]["content"] if prompt else ""
+                else:
+                    prompt_str = prompt
+                stub_response = f"[qwen] stub: {prompt_str}"
+                if stream:
+
+                    def _stream_stub() -> Generator[str, None, None]:
+                        yield stub_response
+
+                    return _stream_stub()
+                return stub_response
             else:
-                prompt_str = prompt
-            stub_response = f"[qwen] stub: {prompt_str}"
-            if stream:
-                def _stream_stub():
-                    yield stub_response
-                return _stream_stub()
-            return stub_response
+                self._raise_auth_error("Qwen API key is missing or set to mock-key in production mode.")
 
         if isinstance(prompt, str):
             messages = [{"role": "user", "content": prompt}]
@@ -110,16 +189,27 @@ class QwenClient:
         **kwargs: Any,
     ) -> str:
         """Synchronous generation with token usage tracking."""
-        def _call():
-            return self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs,
-            )
+        timeout = kwargs.pop("timeout", self.timeout)
 
-        completion: ChatCompletion = self._retry(_call)
+        logger.info("=" * 60)
+        logger.info("CALLING QWEN API")
+        logger.info(f"Model: {model}")
+        logger.info(f"Base URL: {self.base_url}")
+        logger.info("=" * 60)
+
+        completion: ChatCompletion = self._retry(
+            self.client.chat.completions.create,
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            **kwargs,
+        )
+
+        logger.info("=" * 60)
+        logger.info("RAW RESPONSE RECEIVED")
+        logger.info("=" * 60)
 
         if completion.usage:
             self.total_usage.prompt_tokens += completion.usage.prompt_tokens
@@ -137,17 +227,18 @@ class QwenClient:
         **kwargs: Any,
     ) -> Generator[str, None, None]:
         """Streaming generation."""
-        def _call():
-            return self.client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-                **kwargs,
-            )
+        timeout = kwargs.pop("timeout", self.timeout)
 
-        stream: Generator[ChatCompletionChunk, None, None] = self._retry(_call)
+        stream: Generator[ChatCompletionChunk, None, None] = self._retry(
+            self.client.chat.completions.create,
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+            timeout=timeout,
+            **kwargs,
+        )
 
         for chunk in stream:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:
@@ -163,17 +254,27 @@ class QwenClient:
         **kwargs: Any,
     ) -> str | AsyncGenerator[str, None]:
         """Asynchronous generation."""
-        if not self.api_key or self.api_key == "mock-key":
-            if isinstance(prompt, list):
-                prompt_str = prompt[-1]["content"] if prompt else ""
+        import sys
+        env = os.getenv("AGENTSPHERE_ENV", "production").lower()
+        is_dev = env == "development" or "pytest" in sys.modules
+        is_mock_key = not self.api_key or self.api_key == "mock-key"
+
+        if is_mock_key:
+            if is_dev:
+                if isinstance(prompt, list):
+                    prompt_str = prompt[-1]["content"] if prompt else ""
+                else:
+                    prompt_str = prompt
+                stub_response = f"[qwen] stub: {prompt_str}"
+                if stream:
+
+                    async def _astream_stub() -> AsyncGenerator[str, None]:
+                        yield stub_response
+
+                    return _astream_stub()
+                return stub_response
             else:
-                prompt_str = prompt
-            stub_response = f"[qwen] stub: {prompt_str}"
-            if stream:
-                async def _astream_stub():
-                    yield stub_response
-                return _astream_stub()
-            return stub_response
+                self._raise_auth_error("Qwen API key is missing or set to mock-key in production mode.")
 
         if isinstance(prompt, str):
             messages = [{"role": "user", "content": prompt}]
@@ -194,16 +295,27 @@ class QwenClient:
         **kwargs: Any,
     ) -> str:
         """Async sync generation with token usage tracking."""
-        async def _call():
-            return await self.async_client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                **kwargs,
-            )
+        timeout = kwargs.pop("timeout", self.timeout)
 
-        completion: ChatCompletion = await self._retry(_call)
+        logger.info("=" * 60)
+        logger.info("CALLING ASYNC QWEN API")
+        logger.info(f"Model: {model}")
+        logger.info(f"Base URL: {self.base_url}")
+        logger.info("=" * 60)
+
+        completion: ChatCompletion = await self._aretry(
+            self.async_client.chat.completions.create,
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            timeout=timeout,
+            **kwargs,
+        )
+
+        logger.info("=" * 60)
+        logger.info("RAW ASYNC RESPONSE RECEIVED")
+        logger.info("=" * 60)
 
         if completion.usage:
             self.total_usage.prompt_tokens += completion.usage.prompt_tokens
@@ -221,17 +333,18 @@ class QwenClient:
         **kwargs: Any,
     ) -> AsyncGenerator[str, None]:
         """Async streaming generation."""
-        async def _call():
-            return await self.async_client.chat.completions.create(
-                model=model,
-                messages=messages,
-                temperature=temperature,
-                max_tokens=max_tokens,
-                stream=True,
-                **kwargs,
-            )
+        timeout = kwargs.pop("timeout", self.timeout)
 
-        stream: AsyncGenerator[ChatCompletionChunk, None] = await self._retry(_call)
+        stream: AsyncGenerator[ChatCompletionChunk, None] = await self._aretry(
+            self.async_client.chat.completions.create,
+            model=model,
+            messages=messages,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            stream=True,
+            timeout=timeout,
+            **kwargs,
+        )
 
         async for chunk in stream:
             if chunk.choices and chunk.choices[0].delta and chunk.choices[0].delta.content:

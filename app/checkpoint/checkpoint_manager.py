@@ -27,9 +27,12 @@ class CheckpointManager:
             return self._connection
         connection = sqlite3.connect(self._db_path, check_same_thread=False, isolation_level=None)
         connection.row_factory = sqlite3.Row
+        if self._db_path != ":memory:":
+            connection.execute("PRAGMA journal_mode=WAL")
         if self._db_path == ":memory:":
             self._connection = connection
         return connection
+
 
     def _ensure_parent_directory(self) -> None:
         parent = os.path.dirname(self._db_path)
@@ -63,17 +66,44 @@ class CheckpointManager:
                 if self._db_path != ":memory:":
                     connection.close()
 
+    # Maximum total checkpoints to keep across all tasks — older ones are auto-pruned
+    MAX_CHECKPOINTS_TOTAL = 500
+
     def create_checkpoint(self, task_id: str, name: str, state: dict[str, Any]) -> Checkpoint:
-        """Persist a checkpoint for a task."""
+        """Persist a checkpoint for a task.
+
+        Automatically prunes old checkpoints to keep the database from growing
+        unboundedly (was 3.7 GB before this retention policy was added).
+        """
         with self._lock:
             checkpoint_id = self._build_checkpoint_id(task_id)
-            serialized = json.dumps(state, sort_keys=True)
+            # Strip memory snapshot only from auto-checkpoints (those that also carry a 'payload' key).
+            # Kernel auto-checkpoints include both payload + memory, and storing the full memory snapshot
+            # caused the DB to grow to 3.7 GB. Manual checkpoints that only contain 'memory' (e.g. for
+            # rollback) must preserve it so rollback can restore state.
+            if "payload" in state and "memory" in state:
+                lean_state = {k: v for k, v in state.items() if k != "memory"}
+            else:
+                lean_state = state
+            serialized = json.dumps(lean_state, sort_keys=True)
             now = self._now()
             connection = self._connect()
             try:
                 connection.execute(
                     "INSERT INTO checkpoints(id, task_id, name, state, created_at) VALUES(?, ?, ?, ?, ?)",
                     (checkpoint_id, task_id, name, serialized, now),
+                )
+                # Auto-prune: keep only the most recent MAX_CHECKPOINTS_TOTAL entries
+                connection.execute(
+                    """
+                    DELETE FROM checkpoints
+                    WHERE id NOT IN (
+                        SELECT id FROM checkpoints
+                        ORDER BY created_at DESC
+                        LIMIT ?
+                    )
+                    """,
+                    (self.MAX_CHECKPOINTS_TOTAL,),
                 )
                 connection.commit()
             finally:
@@ -83,7 +113,7 @@ class CheckpointManager:
                 id=checkpoint_id,
                 task_id=task_id,
                 name=name,
-                state=state,
+                state=lean_state,
                 created_at=datetime.fromisoformat(now)
             )
 
@@ -110,7 +140,7 @@ class CheckpointManager:
                     connection.close()
 
     def list_checkpoints(self) -> list[Checkpoint]:
-        """List all checkpoints."""
+        """List all checkpoints (full state deserialization — use list_checkpoint_ids() for fast listing)."""
         with self._lock:
             connection = self._connect()
             try:
@@ -131,12 +161,61 @@ class CheckpointManager:
                 if self._db_path != ":memory:":
                     connection.close()
 
+    def list_checkpoint_ids(self, limit: int = 100, with_meta: bool = False) -> list:
+        """Fast metadata listing — never deserializes state blobs.
+
+        Returns a list of dicts with id, task_id, name, created_at.
+        Set with_meta=True to include those fields; False to return plain ID strings.
+        """
+        with self._lock:
+            connection = self._connect()
+            try:
+                rows = connection.execute(
+                    "SELECT id, task_id, name, created_at FROM checkpoints ORDER BY created_at DESC LIMIT ?",
+                    (limit,),
+                ).fetchall()
+                if with_meta:
+                    return [
+                        {
+                            "id": row["id"],
+                            "task_id": row["task_id"],
+                            "name": row["name"],
+                            "created_at": row["created_at"],
+                        }
+                        for row in rows
+                    ]
+                return [row["id"] for row in rows]
+            finally:
+                if self._db_path != ":memory:":
+                    connection.close()
+
     def restore(self, checkpoint_id: str) -> dict[str, Any]:
         """Restore state from a checkpoint."""
         checkpoint = self.get_checkpoint(checkpoint_id)
         if checkpoint is None:
             raise KeyError(f"Checkpoint {checkpoint_id} was not found")
         return checkpoint.state
+
+    def rollback_to_checkpoint(self, checkpoint_id: str) -> dict[str, Any]:
+        """Restore state from a checkpoint and delete all newer checkpoints for that task."""
+        checkpoint = self.get_checkpoint(checkpoint_id)
+        if checkpoint is None:
+            raise KeyError(f"Checkpoint {checkpoint_id} was not found")
+
+        with self._lock:
+            connection = self._connect()
+            try:
+                connection.execute(
+                    "DELETE FROM checkpoints WHERE task_id = ? AND created_at > ?",
+                    (checkpoint.task_id, checkpoint.created_at.isoformat()),
+                )
+                connection.commit()
+            finally:
+                if self._db_path != ":memory:":
+                    connection.close()
+
+        return checkpoint.state
+
 
     def get_versions(self, target_id: str) -> list[str]:
         """Return the full checkpoint history for a target."""

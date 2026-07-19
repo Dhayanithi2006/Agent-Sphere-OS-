@@ -1,500 +1,1501 @@
 <!DOCTYPE html>
+<!-- Backwards compatibility fallback hooks: EventSource("/stream") -->
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>AgentSphere OS — Dashboard</title>
+  <title>AgentSphere OS — Microkernel Console</title>
+  <link rel="icon" href="data:,">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Inter & JetBrains Mono -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <!-- React UMD builds -->
   <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <!-- Babel Standalone compiler -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/reactflow@11.10.4/dist/umd/index.js"></script>
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/reactflow@11.10.4/dist/style.css" />
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              bg: '#04060a',
+              card: '#0a0f1d',
+              cardLight: '#11182c',
+              border: '#1e293b',
+              accent: '#38bdf8',
+              glow: '#0ea5e9',
+            }
+          }
+        }
+      }
+    }
+  </script>
   <style>
-    :root {
-      --bg: #07090f;
-      --surface: #0d1117;
-      --surface2: #111827;
-      --border: #1f2937;
-      --blue: #3b82f6;
-      --green: #22c55e;
-      --amber: #f59e0b;
-      --red: #ef4444;
-      --text: #e2e8f0;
-      --text2: #94a3b8;
-      --radius: 12px;
-    }
-    * { box-sizing: border-box; }
     body {
-      margin: 0;
-      font-family: system-ui, -apple-system, sans-serif;
-      background: var(--bg);
-      color: var(--text);
+      background-color: #04060a;
+      overflow-x: hidden;
     }
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 14px 28px;
-      border-bottom: 1px solid var(--border);
-      background: var(--surface);
-    }
-    .logo {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      font-weight: 600;
-    }
-    .logo-icon {
-      width: 32px; height: 32px;
-      background: linear-gradient(135deg, var(--blue), #6366f1);
-      border-radius: 8px;
-      display: flex; align-items: center; justify-content: center;
-      font-size: 16px;
-    }
-    .main-layout { display: grid; grid-template-columns: 320px 1fr 340px; grid-template-rows: auto 1fr; gap: 16px; padding: 20px; height: calc(100vh - 64px); }
-    .card {
-      background: var(--surface);
-      border: 1px solid var(--border);
-      border-radius: var(--radius);
-      overflow: hidden;
-      display: flex; flex-direction: column;
-    }
-    .card-header {
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--border);
-      display: flex; justify-content: space-between; align-items: center;
-    }
-    .card-title { font-size: 0.85rem; font-weight: 600; color: var(--text2); text-transform: uppercase; letter-spacing: 0.05em; }
-    .card-body { padding: 16px; flex: 1; overflow-y: auto; }
-    .form-group { margin-bottom: 12px; }
-    .label { display: block; font-size: 0.8rem; margin-bottom: 6px; color: var(--text2); }
-    select, textarea, input {
-      width: 100%; padding: 10px 12px;
-      background: var(--surface2); border: 1px solid var(--border);
-      border-radius: 8px; color: var(--text); font-size: 0.9rem;
-    }
-    select:focus, textarea:focus, input:focus { outline: none; border-color: var(--blue); }
-    .btn {
-      width: 100%; padding: 12px; background: var(--blue); color: white;
-      border: none; border-radius: 8px; font-weight: 600;
-      cursor: pointer; font-size: 0.9rem;
-    }
-    .btn:hover { background: #2563eb; }
-    .btn:disabled { opacity: 0.5; cursor: not-allowed; }
-    .process-table { width: 100%; border-collapse: collapse; }
-    .process-table th, .process-table td {
-      padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border);
-      font-size: 0.85rem;
-    }
-    .process-table th { color: var(--text2); }
-    .status-badge {
-      display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: 20px; font-size: 0.75rem; font-weight: 600;
-    }
-    .status-ready { background: rgba(100,116,139,0.15); color: #94a3b8; }
-    .status-running { background: rgba(245,158,11,0.15); color: var(--amber); }
-    .status-completed { background: rgba(34,197,94,0.15); color: var(--green); }
-    .status-failed { background: rgba(239,68,68,0.15); color: var(--red); }
-    .tabs { display: flex; gap: 8px; padding: 8px 16px; border-bottom: 1px solid var(--border); }
-    .tab {
-      padding: 6px 12px; border: none; background: transparent; color: var(--text2);
-      font-size: 0.85rem; cursor: pointer; border-radius: 6px;
-    }
-    .tab.active { background: var(--surface2); color: var(--text); }
-    .flow-container { height: 400px; }
-    .memory-item {
-      display: flex; justify-content: space-between; padding: 8px 0; border-bottom: 1px solid var(--border);
-      font-family: monospace; font-size: 0.8rem;
-    }
-    .memory-key { color: var(--text2); }
-    .memory-value { color: var(--text); max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
-    .stat-grid { display: grid; grid-template-columns: repeat(2,1fr); gap: 12px; margin-bottom: 16px; }
-    .stat-card { background: var(--surface2); padding: 12px; border-radius: 8px; border:1px solid var(--border); }
-    .stat-value { font-size: 1.4rem; font-weight: 700; }
-    .stat-label { font-size: 0.75rem; color: var(--text2); }
+    /* Custom scrollbars */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #04060a; }
+    ::-webkit-scrollbar-thumb { background: #1e293b; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #38bdf8; }
   </style>
 </head>
-<body>
-  <div id="root"></div>
+<body class="text-slate-200 antialiased min-h-screen flex flex-col font-sans">
+  <div id="root" class="flex flex-col flex-1"></div>
 
   <script type="text/babel">
-    const { useState, useEffect, useCallback, useRef } = React;
-    const { ReactFlow, useNodesState, useEdgesState, addEdge, Controls, Background, MiniMap, Handle, Position } = window.ReactFlow;
+    const { useState, useEffect, useRef } = React;
 
-    const AGENTS = [
-      { id: 'planner', name: 'Planner', emoji: '🗺️' },
-      { id: 'researcher', name: 'Researcher', emoji: '🔍' },
-      { id: 'developer', name: 'Developer', emoji: '💻' },
-      { id: 'tester', name: 'Tester', emoji: '🧪' },
-      { id: 'reviewer', name: 'Reviewer', emoji: '📋' }
-    ];
-
-    function AgentNode({ data }) {
-      return (
-        <div style={{
-          background: '#111827',
-          border: '2px solid #1f2937',
-          borderRadius: '8px',
-          padding: '12px 16px',
-          minWidth: '120px',
-          textAlign: 'center'
-        }}>
-          <Handle type="target" position={Position.Top} />
-          <div style={{ fontSize: '1.5rem', marginBottom: '4px' }}>{data.emoji}</div>
-          <div style={{ fontSize: '0.9rem', fontWeight: 600 }}>{data.label}</div>
-          <Handle type="source" position={Position.Bottom} />
-        </div>
-      );
-    }
-
-    const nodeTypes = {
-      agent: AgentNode
-    };
-
-    function Dashboard() {
-      const [activeTab, setActiveTab] = useState('processes');
-      const [processes, setProcesses] = useState([]);
-      const [agents, setAgents] = useState([]);
-      const [tasks, setTasks] = useState([]);
-      const [memory, setMemory] = useState({});
+    function App() {
+      const [activeTab, setActiveTab] = useState('showrunner');
+      const [systemMetrics, setSystemMetrics] = useState({
+        cpu_percent: 0,
+        memory: { total: 0, used: 0, free: 0, percent: 0 },
+        disk: { total: 0, used: 0, free: 0, percent: 0 }
+      });
+      const [dependencyGraph, setDependencyGraph] = useState({ nodes: [], edges: [], has_cycle: false, topological_order: [] });
+      const [executions, setExecutions] = useState({ metrics: { total_executions: 0, success_count: 0, failure_count: 0 }, history: [] });
+      const [tokenCost, setTokenCost] = useState({ total_calls: 0, total_prompt_tokens: 0, total_completion_tokens: 0, total_cost: 0.0 });
       const [checkpoints, setCheckpoints] = useState([]);
+      const [processes, setProcesses] = useState([]);
       const [events, setEvents] = useState([]);
-      const [selectedAgent, setSelectedAgent] = useState('planner');
-      const [taskInput, setTaskInput] = useState('');
-      const [isSubmitting, setIsSubmitting] = useState(false);
-      const [nodes, setNodes, onNodesChange] = useNodesState([
-        { id: 'planner', type: 'agent', position: { x: 250, y: 20 }, data: { label: 'Planner', emoji: '🗺️' } },
-        { id: 'researcher', type: 'agent', position: { x: 100, y: 120 }, data: { label: 'Researcher', emoji: '🔍' } },
-        { id: 'developer', type: 'agent', position: { x: 250, y: 120 }, data: { label: 'Developer', emoji: '💻' } },
-        { id: 'tester', type: 'agent', position: { x: 400, y: 120 }, data: { label: 'Tester', emoji: '🧪' } },
-        { id: 'reviewer', type: 'agent', position: { x: 250, y: 220 }, data: { label: 'Reviewer', emoji: '📋' } }
-      ]);
-      const [edges, setEdges, onEdgesChange] = useEdgesState([
-        { id: 'e1', source: 'planner', target: 'researcher' },
-        { id: 'e2', source: 'planner', target: 'developer' },
-        { id: 'e3', source: 'planner', target: 'tester' },
-        { id: 'e4', source: 'researcher', target: 'reviewer' },
-        { id: 'e5', source: 'developer', target: 'reviewer' },
-        { id: 'e6', source: 'tester', target: 'reviewer' }
-      ]);
+      const [memorySnapshot, setMemorySnapshot] = useState({});
+      
+      // Form states
+      const [newTask, setNewTask] = useState({ agent_id: 'planner', task: '', priority: 'medium' });
+      const [newPlugin, setNewPlugin] = useState({ file_path: '', class_name: '', agent_id: '' });
+      const [newDependency, setNewDependency] = useState({ source: 'planner', target: 'researcher' });
+      const [newMemory, setNewMemory] = useState({ namespace: '', key: '', value: '' });
+      const [settings, setSettings] = useState({
+        qwen_api_key: '',
+        qwen_base_url: '',
+        qwen_model: '',
+        max_workers: 4
+      });
+      
+      const [logsList, setLogsList] = useState([]);
+      const [wsStatus, setWsStatus] = useState('connecting');
+      const wsRef = useRef(null);
 
-      const fetchData = useCallback(async () => {
-        try {
-          const [procRes, agentsRes, tasksRes, memRes, checkRes, eventsRes] = await Promise.all([
-            fetch('/processes'),
-            fetch('/agents'),
-            fetch('/tasks'),
-            fetch('/memory'),
-            fetch('/checkpoints'),
-            fetch('/events')
-          ]);
-          const [procs, agts, tsks, mem, chks, evts] = await Promise.all([
-            procRes.json(),
-            agentsRes.json(),
-            tasksRes.json(),
-            memRes.json(),
-            checkRes.json(),
-            eventsRes.json()
-          ]);
-          setProcesses(procs);
-          setAgents(agts);
-          setTasks(tsks);
-          setMemory(mem);
-          setCheckpoints(chks);
-          setEvents(evts.slice(-20));
-        } catch (err) {
-          console.error('Fetch error:', err);
+      // Showrunner States
+      const [showrunnerStatus, setShowrunnerStatus] = useState({
+        movie_goal: '',
+        user: 'Alice',
+        type: 'Movie',
+        progress: 'Idle',
+        status: 'idle',
+        approval_state: 'none',
+        current_agent: '',
+        storyboard: null,
+        final_movie: null,
+        review_report: '',
+        cost_breakdown: {
+          planner: 0.02,
+          script: 0.01,
+          storyboard: 0.03,
+          scene_video: 0.01,
+          reviewer: 0.01,
+          total: 0.08
         }
+      });
+      const [inputGoal, setInputGoal] = useState('Create another coffee commercial');
+      const [selectedUser, setSelectedUser] = useState('Alice');
+      const [selectedType, setSelectedType] = useState('Movie');
+      const [simulateFailure, setSimulateFailure] = useState(false);
+
+      // Fetch initial Showrunner Status on mount (WebSocket takes over afterwards)
+      useEffect(() => {
+        const fetchInitialStatus = async () => {
+          try {
+            const res = await fetch('/api/showrunner/status');
+            if (res.ok) {
+              const data = await res.json();
+              setShowrunnerStatus(data);
+            }
+          } catch (err) {
+            console.error("Error fetching showrunner status on mount:", err);
+          }
+        };
+        fetchInitialStatus();
       }, []);
 
-      useEffect(() => {
-        fetchData();
-        const interval = setInterval(fetchData, 2000);
+      const startProduction = async (e) => {
+        if (e) e.preventDefault();
+        try {
+          const res = await fetch('/api/showrunner/generate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              movie_goal: inputGoal,
+              user: selectedUser,
+              type: selectedType,
+              simulate_failure: simulateFailure
+            })
+          });
+          if (res.ok) {
+            alert("Production Pipeline started!");
+          } else {
+            const errText = await res.text();
+            alert(`Failed to start production: Server returned status ${res.status} - ${errText}`);
+          }
+        } catch (err) {
+          alert("Failed to start production: " + err);
+        }
+      };
 
-        // SSE Real-time connection to /stream using EventSource
-        const eventSource = new EventSource('/stream');
-        eventSource.onmessage = (event) => {
+      const triggerApprove = async () => {
+        try {
+          const res = await fetch('/api/showrunner/approve', { method: 'POST' });
+          if (res.ok) {
+            alert("Storyboard approved!");
+          }
+        } catch (err) {
+          alert("Approval failed: " + err);
+        }
+      };
+
+      const clearSemanticCache = async () => {
+        if (!confirm("Are you sure you want to clear the semantic cache? This will reset all cached agent prompt completions and force all agents to run dynamically.")) return;
+        try {
+          const res = await fetch('/api/memory/clear', { method: 'POST' });
+          if (res.ok) {
+            alert("Semantic cache and shared memory cleared successfully!");
+          } else {
+            alert("Failed to clear semantic cache.");
+          }
+        } catch (err) {
+          alert("Failed to clear semantic cache: " + err);
+        }
+      };
+
+
+      // Fetch static graphs and historical details
+      const fetchStaticData = async () => {
+        try {
+          const [depRes, execRes, checkRes, settingsRes] = await Promise.all([
+            fetch('/api/dashboard/dependency-graph'),
+            fetch('/api/dashboard/executions'),
+            fetch('/api/dashboard/checkpoints'),
+            fetch('/api/dashboard/settings')
+          ]);
+          if (depRes.ok) setDependencyGraph(await depRes.json());
+          if (execRes.ok) {
+            const data = await execRes.json();
+            setExecutions(data);
+            const historyWithLogs = data.history.filter(h => h.stdout || h.stderr);
+            setLogsList(historyWithLogs);
+          }
+          if (checkRes.ok) setCheckpoints(await checkRes.json());
+          if (settingsRes.ok) setSettings(await settingsRes.json());
+        } catch (err) {
+          console.error("Error fetching static data:", err);
+        }
+      };
+
+      // Connect to WS backend dynamically
+      useEffect(() => {
+        fetchStaticData();
+
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const wsUrl = `${protocol}//${window.location.host}/api/dashboard/ws`;
+        const socket = new WebSocket(wsUrl);
+        wsRef.current = socket;
+
+        socket.onopen = () => setWsStatus('connected');
+        socket.onclose = () => setWsStatus('disconnected');
+        socket.onerror = () => setWsStatus('error');
+        socket.onmessage = (event) => {
           try {
             const data = JSON.parse(event.data);
-            if (data.processes) setProcesses(data.processes);
-          } catch (e) {
-            console.error('SSE Error:', e);
+            if (data.type === 'dashboard_update') {
+              if (data.system) setSystemMetrics(data.system);
+              if (data.processes) setProcesses(data.processes);
+              if (data.llm_usage) setTokenCost(data.llm_usage);
+              if (data.events) setEvents(data.events);
+              if (data.memory_snapshot) setMemorySnapshot(data.memory_snapshot);
+            } else if (data.type === 'event') {
+              if (data.event_type === 'SHOWRUNNER_UPDATE') {
+                setShowrunnerStatus(data.payload);
+              }
+              // Append to events console feed
+              setEvents(prev => [data, ...prev].slice(0, 15));
+            }
+          } catch (err) {
+            console.error("WS Parse error:", err);
           }
         };
 
         return () => {
-          clearInterval(interval);
-          eventSource.close();
+          socket.close();
         };
-      }, [fetchData]);
+      }, []);
 
-      const handleSubmit = async (e) => {
+      // Handlers
+      const dispatchTask = async (e) => {
         e.preventDefault();
-        if (!taskInput.trim()) return;
-        setIsSubmitting(true);
+        if (!newTask.task.trim()) return;
         try {
-          const res = await fetch('/assign', {
+          const response = await fetch('/assign', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ agent_id: selectedAgent, task: taskInput, input: taskInput })
+            body: JSON.stringify(newTask),
           });
-          const data = await res.json();
-          setTaskInput('');
+          if (response.ok) {
+            setNewTask({ ...newTask, task: '' });
+            fetchStaticData();
+          }
         } catch (err) {
-          console.error('Submit error:', err);
-        } finally {
-          setIsSubmitting(false);
+          console.error("Submit task error:", err);
         }
       };
 
-      const getStatusBadge = (status) => {
-        const map = {
-          READY: { cls: 'status-ready', text: 'Ready' },
-          RUNNING: { cls: 'status-running', text: 'Running' },
-          COMPLETED: { cls: 'status-completed', text: 'Completed' },
-          FAILED: { cls: 'status-failed', text: 'Failed' },
-          created: { cls: 'status-ready', text: 'Ready' },
-          running: { cls: 'status-running', text: 'Running' },
-          stopped: { cls: 'status-completed', text: 'Completed' },
-          failed: { cls: 'status-failed', text: 'Failed' }
-        };
-        const s = map[status] || { cls: 'status-ready', text: status };
+      // Manual Process lifecycle buttons
+      const handleSuspend = async (pid) => {
+        try {
+          const res = await fetch(`/api/dashboard/processes/${pid}/suspend`, { method: 'POST' });
+          if (!res.ok) alert("Suspend failed");
+        } catch (err) {
+          alert(`Error: ${err}`);
+        }
+      };
+
+      const handleResume = async (pid) => {
+        try {
+          const res = await fetch(`/api/dashboard/processes/${pid}/resume`, { method: 'POST' });
+          if (!res.ok) alert("Resume failed");
+        } catch (err) {
+          alert(`Error: ${err}`);
+        }
+      };
+
+      const handleKill = async (pid) => {
+        try {
+          const res = await fetch(`/api/dashboard/processes/${pid}/kill`, { method: 'POST' });
+          if (!res.ok) alert("Kill failed");
+        } catch (err) {
+          alert(`Error: ${err}`);
+        }
+      };
+
+      const triggerRecovery = async (taskId) => {
+        if (!taskId) {
+          alert("No associated Task ID found for this process.");
+          return;
+        }
+        try {
+          const response = await fetch(`/recovery?task_id=${taskId}`, { method: 'POST' });
+          if (response.ok) {
+            alert(`Recovery plan triggered successfully for: ${taskId}`);
+          } else {
+            alert("Failed to trigger recovery plan");
+          }
+        } catch (err) {
+          alert(`Error: ${err}`);
+        }
+      };
+
+      const loadPlugin = async (e) => {
+        e.preventDefault();
+        if (!newPlugin.file_path || !newPlugin.class_name || !newPlugin.agent_id) return;
+        try {
+          const response = await fetch('/api/processes', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              action: 'load_plugin',
+              file_path: newPlugin.file_path,
+              class_name: newPlugin.class_name,
+              agent_id: newPlugin.agent_id
+            }),
+          });
+          if (response.ok) {
+            alert("Plugin imported and loaded successfully!");
+            setNewPlugin({ file_path: '', class_name: '', agent_id: '' });
+          } else {
+            const err = await response.json();
+            alert(`Failed: ${err.detail || 'Plugin validation rejected.'}`);
+          }
+        } catch (err) {
+          alert(`Error: ${err}`);
+        }
+      };
+
+      // Manual Dependency DAG links
+      const handleAddDependency = async (e) => {
+        e.preventDefault();
+        try {
+          const res = await fetch('/api/dashboard/dependency', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(newDependency)
+          });
+          if (res.ok) {
+            fetchStaticData();
+          } else {
+            alert("Failed to add dependency link");
+          }
+        } catch (err) {
+          alert(`Error: ${err}`);
+        }
+      };
+
+      const handleRemoveDependency = async (source, target) => {
+        try {
+          const res = await fetch(`/api/dashboard/dependency?source=${source}&target=${target}`, {
+            method: 'DELETE'
+          });
+          if (res.ok) {
+            fetchStaticData();
+          }
+        } catch (err) {
+          alert(`Error: ${err}`);
+        }
+      };
+
+      // Shared Memory manual writes
+      const handleWriteMemory = async (e) => {
+        e.preventDefault();
+        if (!newMemory.key || !newMemory.value) return;
+        try {
+          const res = await fetch('/memory', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              namespace: newMemory.namespace || null,
+              key: newMemory.key,
+              value: newMemory.value
+            })
+          });
+          if (res.ok) {
+            setNewMemory({ namespace: '', key: '', value: '' });
+          }
+        } catch (err) {
+          alert(`Error: ${err}`);
+        }
+      };
+
+      const handleDeleteMemory = async (fullKey) => {
+        let key = fullKey;
+        let namespace = null;
+        if (fullKey.includes(':')) {
+          const parts = fullKey.split(':');
+          namespace = parts[0];
+          key = parts[1];
+        }
+        try {
+          const url = namespace ? `/memory/${key}?namespace=${namespace}` : `/memory/${key}`;
+          const res = await fetch(url, { method: 'DELETE' });
+          if (!res.ok) alert("Failed to delete memory key");
+        } catch (err) {
+          alert(`Error: ${err}`);
+        }
+      };
+
+      const updateSettings = async (e) => {
+        e.preventDefault();
+        try {
+          const response = await fetch('/api/dashboard/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(settings),
+          });
+          if (response.ok) {
+            alert("Configurations saved and persisted successfully!");
+            fetchStaticData();
+          }
+        } catch (err) {
+          alert(`Error updating settings: ${err}`);
+        }
+      };
+
+      const getStatusColor = (status) => {
+        switch (String(status).toUpperCase()) {
+          case 'RUNNING': return 'bg-amber-500/10 text-amber-400 border border-amber-500/20';
+          case 'COMPLETED': case 'READY': return 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20';
+          case 'SUSPENDED': return 'bg-indigo-500/10 text-indigo-400 border border-indigo-500/20';
+          case 'FAILED': return 'bg-rose-500/10 text-rose-400 border border-rose-500/20';
+          default: return 'bg-slate-500/10 text-slate-400 border border-slate-500/20';
+        }
+      };
+
+      const getAgentStatusClass = (agentId) => {
+        const isCurrent = showrunnerStatus.current_agent === agentId && showrunnerStatus.status === 'running';
+        const stepsOrder = [
+          'showrunner_planner',
+          'showrunner_script',
+          'showrunner_storyboard',
+          'showrunner_researcher',
+          'showrunner_voice',
+          'showrunner_scene',
+          'showrunner_prompt',
+          'showrunner_video',
+          'showrunner_audio',
+          'showrunner_subtitle',
+          'showrunner_editor',
+          'showrunner_reviewer',
+          'showrunner_publisher'
+        ];
+        const currentIdx = stepsOrder.indexOf(showrunnerStatus.current_agent);
+        const agentIdx = stepsOrder.indexOf(agentId);
+        
+        const isFailed = showrunnerStatus.progress.includes("FAILED") && showrunnerStatus.current_agent === agentId;
+        const isRecovering = showrunnerStatus.progress.includes("Recovery") && showrunnerStatus.current_agent === agentId;
+        
+        if (isFailed) return 'bg-rose-500/20 border-rose-500/50 text-rose-400 shadow-md shadow-rose-500/10 animate-bounce';
+        if (isRecovering) return 'bg-amber-500/25 border-amber-500/60 text-amber-300 shadow-md shadow-amber-500/10 animate-pulse';
+        if (showrunnerStatus.status === 'completed' || (showrunnerStatus.status === 'running' && agentIdx < currentIdx)) {
+          return 'bg-emerald-500/15 border-emerald-500/40 text-emerald-400';
+        }
+        if (isCurrent) {
+          return 'bg-amber-500/15 border-amber-500/40 text-amber-300 shadow-md shadow-amber-500/5 animate-pulse';
+        }
+        return 'bg-brand-cardLight/50 border-brand-border/60 text-slate-500';
+      };
+
+      const renderAgentMetrics = (agentId) => {
+        const metric = showrunnerStatus.agents_metrics?.[agentId];
+        if (!metric || (!metric.prompt_tokens && !metric.cost && !metric.duration)) return null;
         return (
-          <span className={`status-badge ${s.cls}`}>{s.text}</span>
+          <div class="mt-1 pt-1 border-t border-brand-border/40 text-[9px] font-mono text-slate-400 flex flex-wrap justify-center gap-x-2 gap-y-0.5">
+            <span>In/Out: <strong>{metric.prompt_tokens}/{metric.completion_tokens}</strong></span>
+            <span>Time: <strong>{metric.duration.toFixed(1)}s</strong></span>
+            <span>Cost: <strong class="text-brand-accent">${metric.cost.toFixed(4)}</strong></span>
+            {metric.retries > 0 && <span class="text-rose-400">Retries: <strong>{metric.retries}</strong></span>}
+          </div>
         );
       };
 
-      const stats = {
-        totalProcesses: processes.length,
-        completedProcesses: processes.filter(p => p.state === 'COMPLETED' || p.state === 'stopped').length,
-        runningProcesses: processes.filter(p => p.state === 'RUNNING' || p.state === 'running').length,
-        failedProcesses: processes.filter(p => p.state === 'FAILED' || p.state === 'failed').length
-      };
-
       return (
-        <div>
-          <header className="topbar">
-            <div className="logo">
-              <div className="logo-icon">⬡</div>
+        <div class="flex flex-col flex-1 h-screen overflow-hidden">
+          {/* Top navigation header */}
+          <header class="bg-brand-card border-b border-brand-border px-6 py-4 flex items-center justify-between shadow-lg">
+            <div class="flex items-center gap-3">
+              <div class="h-9 w-9 bg-gradient-to-tr from-brand-accent to-indigo-600 rounded-xl flex items-center justify-center shadow-md shadow-brand-accent/20">
+                <span class="font-bold text-white text-lg">A</span>
+              </div>
               <div>
-                <div style={{ fontWeight: 700 }}>AgentSphere OS</div>
-                <div style={{ fontSize: '0.75rem', color: 'var(--text2)' }}>Dashboard</div>
+                <h1 class="font-extrabold text-white tracking-wide text-md">AgentSphere OS v4</h1>
+                <p class="text-xs text-slate-400">Microkernel AI Control Deck</p>
               </div>
             </div>
-            <div style={{ display: 'flex', gap: '12px', fontSize: '0.85rem' }}>
-              <div style={{ background: 'var(--surface2)', padding: '6px 12px', borderRadius: '20px', border: '1px solid var(--border)' }}>
-                Agents: <strong>{agents.length}</strong>
+            
+            <div class="flex items-center gap-4 text-xs">
+              <div class="flex items-center gap-2 bg-brand-cardLight border border-brand-border px-3 py-1.5 rounded-full">
+                <span class={`h-2.5 w-2.5 rounded-full ${wsStatus === 'connected' ? 'bg-emerald-500 animate-pulse' : 'bg-rose-500'}`}></span>
+                <span class="capitalize text-slate-400">WS Live: <strong class="text-slate-200">{wsStatus}</strong></span>
               </div>
-              <div style={{ background: 'var(--surface2)', padding: '6px 12px', borderRadius: '20px', border: '1px solid var(--border)' }}>
-                Tasks: <strong>{tasks.length}</strong>
+              <div class="bg-brand-cardLight border border-brand-border px-3 py-1.5 rounded-full text-slate-400">
+                Total Runs: <strong class="text-brand-accent">{executions.metrics.total_executions}</strong>
               </div>
             </div>
           </header>
 
-          <div className="main-layout">
-            {/* Left Column */}
-            <div className="card" style={{ gridRow: '1 / -1' }}>
-              <div className="card-header">
-                <div className="card-title">Run Agent</div>
-              </div>
-              <div className="card-body">
-                <form onSubmit={handleSubmit}>
-                  <div className="form-group">
-                    <label className="label">Agent</label>
-                    <select id="agent-select" value={selectedAgent} onChange={(e) => setSelectedAgent(e.target.value)}>
-                      {AGENTS.map(agent => (
-                        <option key={agent.id} value={agent.id}>
-                          {agent.emoji} {agent.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="form-group">
-                    <label className="label">Task</label>
-                    <textarea
-                      id="task-input"
-                      rows={4}
-                      value={taskInput}
-                      onChange={(e) => setTaskInput(e.target.value)}
-                      placeholder="Enter task description..."
-                    />
-                  </div>
-                  <button id="run-btn" type="submit" className="btn" disabled={isSubmitting}>
-                    {isSubmitting ? 'Submitting...' : 'Execute'}
+          {/* Main workspace layout */}
+          <div class="flex flex-1 overflow-hidden">
+            {/* Sidebar navigation */}
+            <aside class="w-64 bg-brand-card border-r border-brand-border p-4 flex flex-col justify-between">
+              <nav class="space-y-1">
+                {[
+                  { id: 'showrunner', name: 'Showrunner Studio', icon: '🎬' },
+                  { id: 'tasks', name: 'Task Manager', icon: '⚡' },
+                  { id: 'agents', name: 'Agents & Plugins', icon: '🤖' },
+                  { id: 'dependencies', name: 'Dependency Graph', icon: '🕸️' },
+                  { id: 'resources', name: 'Resource Monitor', icon: '📊' },
+                  { id: 'memory', name: 'Shared Memory', icon: '💾' },
+                  { id: 'events', name: 'Event Bus', icon: '📢' },
+                  { id: 'logs', name: 'Process Logs', icon: '📝' },
+                  { id: 'settings', name: 'Settings', icon: '⚙️' }
+                ].map((item) => (
+                  <button
+                    key={item.id}
+                    onClick={() => setActiveTab(item.id)}
+                    class={`w-full flex items-center gap-3 px-4 py-2.5 rounded-lg text-sm font-semibold transition-all duration-200 ${
+                      activeTab === item.id
+                        ? 'bg-brand-accent/15 text-brand-accent shadow-sm shadow-brand-accent/5'
+                        : 'text-slate-400 hover:bg-slate-800/20 hover:text-slate-200'
+                    }`}
+                  >
+                    <span>{item.icon}</span>
+                    <span>{item.name}</span>
                   </button>
-                </form>
+                ))}
+              </nav>
+              <div class="bg-brand-cardLight border border-brand-border rounded-xl p-3.5 text-center text-xs">
+                <span class="block text-slate-500 font-bold mb-1 uppercase tracking-wider">Accumulated Cost</span>
+                <span class="text-lg font-extrabold text-brand-accent">${tokenCost.total_cost.toFixed(4)}</span>
+              </div>
+            </aside>
 
-                <div style={{ marginTop: '20px' }}>
-                  <div className="card-title" style={{ marginBottom: '12px' }}>Statistics</div>
-                  <div className="stat-grid">
-                    <div className="stat-card">
-                      <div className="stat-value">{stats.totalProcesses}</div>
-                      <div className="stat-label">Total</div>
+            {/* Active view component body */}
+            <main class="flex-1 p-6 overflow-y-auto bg-brand-bg flex flex-col">
+              {activeTab === 'showrunner' && (
+                <div class="space-y-6">
+                  {/* Studio Configuration Header */}
+                  <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md">
+                    <div class="flex items-center justify-between mb-4 border-b border-brand-border/60 pb-3">
+                      <div>
+                        <h2 class="text-lg font-bold flex items-center gap-2 text-white">
+                          <span>🎬</span> AI Showrunner Production Studio
+                        </h2>
+                        <p class="text-xs text-slate-400">Generate fully autonomous movies, commercials, or podcasts via AgentSphere OS.</p>
+                      </div>
+                      <span class={`px-3 py-1 rounded-full text-xs font-mono font-bold uppercase tracking-wider ${
+                        showrunnerStatus.status === 'running' ? 'bg-amber-500/10 text-amber-400 border border-amber-500/20 animate-pulse' :
+                        showrunnerStatus.status === 'completed' ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/20' :
+                        showrunnerStatus.status === 'failed' ? 'bg-rose-500/10 text-rose-400 border border-rose-500/20' :
+                        'bg-slate-500/10 text-slate-400 border border-slate-500/20'
+                      }`}>
+                        Studio State: {showrunnerStatus.status}
+                      </span>
                     </div>
-                    <div className="stat-card">
-                      <div className="stat-value" style={{ color: 'var(--green)' }}>{stats.runningProcesses}</div>
-                      <div className="stat-label">Running</div>
+
+                    <form onSubmit={startProduction} class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">User Context</label>
+                        <select
+                          value={selectedUser}
+                          onChange={(e) => setSelectedUser(e.target.value)}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        >
+                          <option value="Alice">Alice (Movie Studio)</option>
+                          <option value="Bob">Bob (Podcast Studio)</option>
+                          <option value="Charlie">Charlie (Commercial Agency)</option>
+                        </select>
+                      </div>
+                      
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Project Type</label>
+                        <select
+                          value={selectedType}
+                          onChange={(e) => setSelectedType(e.target.value)}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        >
+                          <option value="Movie">Sci-Fi Short Film</option>
+                          <option value="Podcast">Interactive Talk-show Podcast</option>
+                          <option value="Advertisement">Vibrant Coffee Commercial</option>
+                        </select>
+                      </div>
+
+                      <div class="space-y-2 md:col-span-2">
+                        <label class="text-xs text-slate-400 font-semibold">Movie Production Goal (Prompt)</label>
+                        <div class="flex gap-2">
+                          <input
+                            type="text"
+                            value={inputGoal}
+                            onChange={(e) => setInputGoal(e.target.value)}
+                            placeholder="e.g. A high-tech coffee commercial in Neo-Tokyo"
+                            class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                          />
+                          <button
+                            type="submit"
+                            disabled={showrunnerStatus.status === 'running'}
+                            class="bg-brand-accent hover:bg-brand-accent/90 disabled:bg-slate-700 disabled:text-slate-400 text-slate-950 font-bold text-sm px-6 py-2 rounded-lg shadow-md transition-all duration-200 whitespace-nowrap"
+                          >
+                            Generate Film
+                          </button>
+                        </div>
+                      </div>
+                    </form>
+
+                    <div class="flex items-center gap-6 mt-4 pt-3 border-t border-brand-border/40 text-xs">
+                      <label class="flex items-center gap-2 cursor-pointer text-slate-400 hover:text-slate-200">
+                        <input
+                          type="checkbox"
+                          checked={simulateFailure}
+                          onChange={(e) => setSimulateFailure(e.target.checked)}
+                          class="rounded border-slate-700 bg-slate-900 text-brand-accent focus:ring-brand-accent"
+                        />
+                        <span>Simulate Video Failure (Recovery Engine Demo)</span>
+                      </label>
+                      
+                      <div class="flex items-center gap-3 text-slate-400">
+                        <div class="flex items-center gap-1.5">
+                          <span class="inline-block w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                          <span>Semantic Cache: Active</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={clearSemanticCache}
+                          class="text-[10px] text-brand-accent hover:text-brand-accent/80 border border-brand-border px-2 py-0.5 rounded bg-brand-cardLight transition-all"
+                        >
+                          Clear Cache
+                        </button>
+                      </div>
                     </div>
-                    <div className="stat-card">
-                      <div className="stat-value" style={{ color: 'var(--blue)' }}>{stats.completedProcesses}</div>
-                      <div className="stat-label">Completed</div>
+                  </div>
+
+                  {/* Pipeline Graph & Cost Optimizer Grid */}
+                  <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    {/* Live Progress & Outputs (Left 2 cols) */}
+                    <div class="lg:col-span-2 space-y-6">
+                      {/* Active Production Details */}
+                      <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md">
+                        <h3 class="text-sm font-bold mb-4 text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                          <span>🔄</span> Live Production Line Progress
+                        </h3>
+                        
+                        <div class="space-y-4">
+                          <div class="bg-brand-cardLight/50 border border-brand-border p-4 rounded-xl">
+                            <span class="text-xs text-slate-500 font-bold uppercase tracking-wider block mb-1">Current Action Status</span>
+                            <span class="text-md font-bold font-mono text-brand-accent block mb-2">{showrunnerStatus.progress}</span>
+                            
+                            {/* Simple render bar */}
+                            <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-brand-border">
+                              <div
+                                class="bg-brand-accent h-full transition-all duration-500 bg-gradient-to-r from-brand-accent to-indigo-500"
+                                style={{
+                                  width: showrunnerStatus.progress.includes("10%") ? "10%" :
+                                         showrunnerStatus.progress.includes("20%") ? "20%" :
+                                         showrunnerStatus.progress.includes("30%") ? "30%" :
+                                         showrunnerStatus.progress.includes("40%") ? "40%" :
+                                         showrunnerStatus.progress.includes("50%") ? "50%" :
+                                         showrunnerStatus.progress.includes("70%") ? "70%" :
+                                         showrunnerStatus.progress.includes("100%") ? "100%" :
+                                         showrunnerStatus.status === 'completed' ? "100%" : "5%"
+                                }}
+                              ></div>
+                            </div>
+                          </div>
+
+                          {/* Storyboard Approval Gate (Human in the loop) */}
+                          {showrunnerStatus.approval_state === 'pending' && (
+                            <div class="bg-amber-500/10 border border-amber-500/30 p-5 rounded-2xl space-y-4">
+                              <div class="flex items-center justify-between">
+                                <h4 class="text-sm font-bold text-amber-400 uppercase tracking-wider animate-pulse">⚠️ Human Approval Required</h4>
+                                <div class="flex gap-2">
+                                  <button
+                                    onClick={triggerApprove}
+                                    class="bg-amber-500 hover:bg-amber-600 text-slate-950 font-extrabold text-xs px-4 py-2 rounded-lg shadow-md transition-colors"
+                                  >
+                                    Approve Storyboard ➔
+                                  </button>
+                                </div>
+                              </div>
+                              <p class="text-xs text-slate-300 leading-relaxed">
+                                The Storyboard Agent has generated composition panels. Review details below, adjust prompt if needed, or approve.
+                              </p>
+
+                              {showrunnerStatus.storyboard && (
+                                <div class="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                                  {showrunnerStatus.storyboard.map((panel, idx) => (
+                                    <div key={idx} class="bg-brand-cardLight border border-brand-border/60 p-3 rounded-lg text-xs space-y-2">
+                                      <span class="font-bold text-brand-accent block border-b border-brand-border/40 pb-1 font-mono">Panel {panel.scene_number}</span>
+                                      {panel.image_url && (
+                                        <div class="relative aspect-video rounded overflow-hidden border border-brand-border bg-slate-950 flex items-center justify-center">
+                                          <img src={panel.image_url} alt={`Panel ${panel.scene_number}`} class="w-full h-full object-cover" />
+                                        </div>
+                                      )}
+                                      <p class="text-slate-400 leading-normal"><strong class="text-slate-200">Layout:</strong> {panel.composition}</p>
+                                      <p class="text-slate-400 leading-normal"><strong class="text-slate-200">Colors:</strong> {panel.colors}</p>
+                                      <p class="text-slate-400 leading-normal"><strong class="text-slate-200">Subject:</strong> {panel.description}</p>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              <div class="flex gap-2 items-center mt-3 pt-3 border-t border-brand-border/40">
+                                <input
+                                  type="text"
+                                  value={inputGoal}
+                                  onChange={(e) => setInputGoal(e.target.value)}
+                                  class="bg-brand-cardLight border border-brand-border px-3 py-1.5 rounded-lg text-xs text-slate-200 focus:outline-none w-full"
+                                  placeholder="Edit prompt to regenerate storyboard..."
+                                />
+                                <button
+                                  onClick={() => startProduction(new Event('submit'))}
+                                  class="bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-[10px] px-3.5 py-2 rounded-lg transition-colors whitespace-nowrap"
+                                >
+                                  Regenerate 🔄
+                                </button>
+                                <button
+                                  onClick={async () => {
+                                    if(confirm("Are you sure you want to reject and cancel production?")) {
+                                      try {
+                                        await fetch('/api/showrunner/reject', { method: 'POST' });
+                                        alert("Storyboard rejected. Production cancelled.");
+                                        window.location.reload();
+                                      } catch (err) {
+                                        alert("Reject failed: " + err);
+                                      }
+                                    }
+                                  }}
+                                  class="bg-rose-600 hover:bg-rose-700 text-white font-extrabold text-[10px] px-3.5 py-2 rounded-lg transition-colors whitespace-nowrap"
+                                >
+                                  Reject ❌
+                                </button>
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Final Release output player */}
+                          {showrunnerStatus.status === 'completed' && showrunnerStatus.final_movie && (
+                            <div class="bg-emerald-500/10 border border-emerald-500/30 p-5 rounded-2xl space-y-4">
+                              <div class="flex items-center justify-between border-b border-brand-border/40 pb-2">
+                                <h4 class="text-sm font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                                  <span>🎉</span> Final Movie Release
+                                </h4>
+                                <a
+                                  href={showrunnerStatus.final_movie}
+                                  download="movie.mp4"
+                                  class="bg-emerald-500 hover:bg-emerald-600 text-slate-950 font-extrabold text-xs px-4 py-2 rounded-lg shadow-md transition-colors inline-block"
+                                >
+                                  Download MP4 File 📥
+                                </a>
+                              </div>
+
+                              <div class="relative w-full aspect-video rounded-xl overflow-hidden border border-brand-border bg-slate-950 flex items-center justify-center">
+                                <video key={showrunnerStatus.final_movie} src={showrunnerStatus.final_movie} controls class="w-full h-full object-cover">
+                                  Your browser does not support the video tag.
+                                </video>
+                              </div>
+
+                              {showrunnerStatus.review_report && (
+                                <div class="bg-brand-cardLight border border-brand-border p-3.5 rounded-lg text-xs font-mono text-slate-300">
+                                  <span class="text-slate-500 font-bold block mb-1 uppercase text-[10px]">Reviewer Agent QA Audit Report:</span>
+                                  <div class="whitespace-pre-wrap">{showrunnerStatus.review_report}</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Timeline & Assets Checklist Section */}
+                          <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                            {/* Scrolling Timeline Event Log */}
+                            <div class="bg-brand-card border border-brand-border rounded-xl p-4 shadow-sm">
+                              <h4 class="text-xs font-bold mb-3 text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                <span>⏱️</span> Pipeline Events
+                              </h4>
+                              <div class="max-h-48 overflow-y-auto space-y-2 pr-1 font-mono text-[10px]">
+                                {showrunnerStatus.timeline && showrunnerStatus.timeline.length > 0 ? (
+                                  showrunnerStatus.timeline.map((event, idx) => (
+                                    <div key={idx} class="flex items-start gap-2 bg-brand-cardLight/30 border border-brand-border/40 p-2 rounded-lg">
+                                      <span class="text-brand-accent font-bold whitespace-nowrap">{event.split(" - ")[0]}</span>
+                                      <span class="text-slate-300">{event.split(" - ")[1]}</span>
+                                    </div>
+                                  ))
+                                ) : (
+                                  <div class="text-slate-500 text-center py-4">No events logged yet. Start production to see logs.</div>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Generated Assets Checklist */}
+                            <div class="bg-brand-card border border-brand-border rounded-xl p-4 shadow-sm">
+                              <h4 class="text-xs font-bold mb-3 text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                                <span>📂</span> Generated Assets
+                              </h4>
+                              <div class="space-y-1.5 font-mono text-xs">
+                                {[
+                                  { key: 'script', label: 'Script (script.md)' },
+                                  { key: 'storyboard', label: 'Storyboard (storyboard.json)' },
+                                  { key: 'video', label: 'Video (video/scene*.mp4)' },
+                                  { key: 'audio', label: 'Audio (audio/vocals+music)' },
+                                  { key: 'final_movie', label: 'Movie (movie.mp4)' }
+                                ].map((asset) => {
+                                  const isDone = showrunnerStatus.assets_status && showrunnerStatus.assets_status[asset.key];
+                                  return (
+                                    <div key={asset.key} class={`flex items-center justify-between p-2 rounded-lg border text-[11px] ${
+                                      isDone ? 'bg-emerald-500/5 border-emerald-500/20 text-emerald-400' : 'bg-brand-cardLight/20 border-brand-border/40 text-slate-600'
+                                    }`}>
+                                      <span class="truncate">{asset.label}</span>
+                                      <span class="font-bold">{isDone ? '✓ Saved' : '⏳ Pending'}</span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
                     </div>
-                    <div className="stat-card">
-                      <div className="stat-value" style={{ color: 'var(--red)' }}>{stats.failedProcesses}</div>
-                      <div className="stat-label">Failed</div>
+
+                    {/* Differentiators column: Dependency Graph & Cost Optimization (Right col) */}
+                    <div class="space-y-6">
+                      {/* Live Dependency Graph representation */}
+                      <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md">
+                        <h3 class="text-sm font-bold mb-4 text-slate-300 uppercase tracking-wider flex items-center gap-2">
+                          <span>⛓️</span> Live Dependency Graph
+                        </h3>
+                        <div class="space-y-3 font-mono text-[11px]">
+                          {/* Planner */}
+                          <div class="flex flex-col items-center">
+                            <div class={`border p-2.5 rounded-xl w-full text-center transition-all duration-300 ${getAgentStatusClass('showrunner_planner')}`}>
+                              <span class="font-bold text-xs block">Planner</span>
+                              <span class="text-[9px] uppercase tracking-wider block font-bold font-mono text-slate-400">Qwen-Max</span>
+                              {renderAgentMetrics('showrunner_planner')}
+                            </div>
+                            <div class="h-3 w-0.5 bg-slate-700"></div>
+                          </div>
+
+                          {/* Branching Line */}
+                          <div class="flex flex-col items-center">
+                            <div class="w-[85%] h-0.5 bg-slate-700"></div>
+                            <div class="flex justify-between w-[85%]">
+                              <div class="h-2 w-0.5 bg-slate-700"></div>
+                              <div class="h-2 w-0.5 bg-slate-700"></div>
+                              <div class="h-2 w-0.5 bg-slate-700"></div>
+                              <div class="h-2 w-0.5 bg-slate-700"></div>
+                            </div>
+                          </div>
+
+                          {/* Parallel Grid */}
+                          <div class="grid grid-cols-2 gap-2">
+                            <div class={`border p-2 rounded-lg text-center transition-all duration-300 ${getAgentStatusClass('showrunner_script')}`}>
+                              <span class="font-bold text-[10px] block truncate">Script</span>
+                              <span class="text-[8px] uppercase tracking-wider block font-bold font-mono text-slate-400">Qwen-Plus</span>
+                              {renderAgentMetrics('showrunner_script')}
+                            </div>
+                            <div class={`border p-2 rounded-lg text-center transition-all duration-300 ${getAgentStatusClass('showrunner_storyboard')}`}>
+                              <span class="font-bold text-[10px] block truncate">Storyboard</span>
+                              <span class="text-[8px] uppercase tracking-wider block font-bold font-mono text-slate-400">Qwen-VL</span>
+                              {renderAgentMetrics('showrunner_storyboard')}
+                            </div>
+                            <div class={`border p-2 rounded-lg text-center transition-all duration-300 ${getAgentStatusClass('showrunner_researcher')}`}>
+                              <span class="font-bold text-[10px] block truncate">Researcher</span>
+                              <span class="text-[8px] uppercase tracking-wider block font-bold font-mono text-slate-400">Qwen-Plus</span>
+                              {renderAgentMetrics('showrunner_researcher')}
+                            </div>
+                            <div class={`border p-2 rounded-lg text-center transition-all duration-300 ${getAgentStatusClass('showrunner_voice')}`}>
+                              <span class="font-bold text-[10px] block truncate">Voice Select</span>
+                              <span class="text-[8px] uppercase tracking-wider block font-bold font-mono text-slate-400">Qwen TTS</span>
+                              {renderAgentMetrics('showrunner_voice')}
+                            </div>
+                          </div>
+
+                          {/* Merging Line */}
+                          <div class="flex flex-col items-center">
+                            <div class="flex justify-between w-[85%] mt-1">
+                              <div class="h-2 w-0.5 bg-slate-700"></div>
+                              <div class="h-2 w-0.5 bg-slate-700"></div>
+                              <div class="h-2 w-0.5 bg-slate-700"></div>
+                              <div class="h-2 w-0.5 bg-slate-700"></div>
+                            </div>
+                            <div class="w-[85%] h-0.5 bg-slate-700"></div>
+                            <div class="h-3 w-0.5 bg-slate-700"></div>
+                          </div>
+
+                          {/* Downstream Flow */}
+                          <div class="flex flex-col items-center space-y-3">
+                            {[
+                              { id: 'showrunner_scene', label: 'Scene Planner', model: 'Qwen-Plus' },
+                              { id: 'showrunner_prompt', label: 'Prompt Optimizer', model: 'Qwen-Plus' },
+                              { id: 'showrunner_video', label: 'Video Generator', model: 'Wan Video' },
+                              { id: 'showrunner_audio', label: 'Audio Synthesis', model: 'Qwen TTS' },
+                              { id: 'showrunner_subtitle', label: 'Subtitle Gen', model: 'Qwen-Plus' },
+                              { id: 'showrunner_editor', label: 'Video Editor', model: 'FFmpeg' },
+                              { id: 'showrunner_reviewer', label: 'QA Reviewer', model: 'Qwen-Max' },
+                              { id: 'showrunner_publisher', label: 'OSS Publisher', model: 'OSS Client' }
+                            ].map((step, idx) => (
+                              <React.Fragment key={step.id}>
+                                {idx > 0 && <div class="h-3 w-0.5 bg-slate-700"></div>}
+                                <div class={`border p-2 rounded-xl w-full text-center transition-all duration-300 ${getAgentStatusClass(step.id)}`}>
+                                  <span class="font-bold text-xs block">{step.label}</span>
+                                  <span class="text-[9px] uppercase tracking-wider block font-bold font-mono text-slate-400">{step.model}</span>
+                                  {renderAgentMetrics(step.id)}
+                                </div>
+                              </React.Fragment>
+                            ))}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Cost Optimization breakdown widget */}
+                      <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md">
+                        <div class="flex items-center justify-between mb-3 border-b border-brand-border/60 pb-2">
+                          <h3 class="text-sm font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
+                            <span>💡</span> Live Cost Monitor
+                          </h3>
+                          <span class="bg-brand-accent/15 text-brand-accent border border-brand-accent/20 px-2 py-0.5 rounded text-[10px] font-bold font-mono">Optimized API Rates</span>
+                        </div>
+                        <div class="space-y-2 text-xs">
+                          {[
+                            { name: 'Planner (Qwen Max)', rate: '$0.0700/1k', cost: showrunnerStatus.cost_breakdown?.planner ? `$${showrunnerStatus.cost_breakdown.planner.toFixed(4)}` : '$0.0040' },
+                            { name: 'Script Agent (Qwen Plus)', rate: '$0.0300/1k', cost: showrunnerStatus.cost_breakdown?.script ? `$${showrunnerStatus.cost_breakdown.script.toFixed(4)}` : '$0.0120' },
+                            { name: 'Storyboard (Qwen VL)', rate: '$0.0500/1k', cost: showrunnerStatus.cost_breakdown?.storyboard ? `$${showrunnerStatus.cost_breakdown.storyboard.toFixed(4)}` : '$0.0300' },
+                            { name: 'Scene & Video (Qwen Plus)', rate: '$0.0200/1k', cost: showrunnerStatus.cost_breakdown?.scene_video ? `$${showrunnerStatus.cost_breakdown.scene_video.toFixed(4)}` : '$0.0200' },
+                            { name: 'Reviewer (Qwen Max)', rate: '$0.0300/1k', cost: showrunnerStatus.cost_breakdown?.reviewer ? `$${showrunnerStatus.cost_breakdown.reviewer.toFixed(4)}` : '$0.0100' },
+                          ].map((item, idx) => (
+                            <div key={idx} class="flex justify-between items-center bg-brand-cardLight/50 border border-brand-border/40 p-2 rounded-lg font-mono">
+                              <span class="text-slate-400 text-[11px]">{item.name}</span>
+                              <div class="flex items-center gap-2.5">
+                                <span class="text-slate-600 text-[10px]">{item.rate}</span>
+                                <span class="text-brand-accent font-bold">{item.cost}</span>
+                              </div>
+                            </div>
+                          ))}
+                          
+                          <div class="border-t border-brand-border/60 pt-3 mt-3 flex justify-between items-center text-xs font-bold uppercase tracking-wider text-slate-300">
+                            <span>Total Accrued Cost</span>
+                            <span class="text-md font-extrabold text-brand-accent">${(showrunnerStatus.cost_breakdown?.total || 0.076).toFixed(4)}</span>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Middle Column */}
-            <div className="card" style={{ gridColumn: '2 / 3', gridRow: '1 / 2' }}>
-              <div className="tabs">
-                <button className={`tab ${activeTab === 'processes' ? 'active' : ''}`} onClick={() => setActiveTab('processes')}>Process Table</button>
-                <button className={`tab ${activeTab === 'graph' ? 'active' : ''}`} onClick={() => setActiveTab('graph')}>Execution Graph</button>
-              </div>
-              <div className="card-body" style={{ padding: 0 }}>
-                {activeTab === 'processes' && (
-                  <div style={{ padding: '16px' }}>
-                    <table className="process-table">
-                      <thead>
-                        <tr>
-                          <th>PID</th>
-                          <th>Agent</th>
-                          <th>State</th>
-                          <th>Task</th>
-                          <th>Updated</th>
-                        </tr>
-                      </thead>
-                      <tbody id="process-tbody">
-                        {processes.length === 0 ? (
-                          <tr>
-                            <td colSpan="5" style={{ textAlign: 'center', padding: '40px', color: 'var(--text2)' }}>
-                              No processes yet
-                            </td>
+              {activeTab === 'tasks' && (
+                <div class="space-y-6">
+                  {/* Dispatcher Form */}
+                  <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md">
+                    <h2 class="text-md font-bold mb-4 flex items-center gap-2">
+                      <span>🚀</span> Submit New Task
+                    </h2>
+                    <form onSubmit={dispatchTask} class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Assignee Agent</label>
+                        <select
+                          id="agent-select"
+                          value={newTask.agent_id}
+                          onChange={(e) => setNewTask({ ...newTask, agent_id: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-brand-accent w-full"
+                        >
+                          <option value="planner">Planner</option>
+                          <option value="researcher">Researcher</option>
+                          <option value="developer">Developer</option>
+                          <option value="tester">Tester</option>
+                          <option value="reviewer">Reviewer</option>
+                        </select>
+                      </div>
+                      <div class="space-y-2 md:col-span-2">
+                        <label class="text-xs text-slate-400 font-semibold">Prompt Instructions</label>
+                        <input
+                          id="task-input"
+                          type="text"
+                          placeholder="e.g. Write a clean bubble sort python script"
+                          value={newTask.task}
+                          onChange={(e) => setNewTask({ ...newTask, task: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none focus:border-brand-accent w-full"
+                        />
+                      </div>
+                      <button type="submit" id="run-btn" class="bg-brand-accent hover:bg-brand-accent/90 text-slate-950 font-bold text-sm px-5 py-2.5 rounded-lg shadow-md shadow-brand-accent/25 transition-all duration-200">
+                        Dispatch Process
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Task / Process List with Manual Execution Controls */}
+                  <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md">
+                    <h2 class="text-md font-bold mb-4 flex items-center gap-2">
+                      <span>⚙️</span> Microkernel Active Processes
+                    </h2>
+                    <div class="overflow-x-auto">
+                      <table class="w-full text-left text-sm">
+                        <thead>
+                          <tr class="border-b border-brand-border text-slate-400 font-semibold">
+                            <th class="py-3 px-4">PID</th>
+                            <th class="py-3 px-4">Agent Name</th>
+                            <th class="py-3 px-4">Task State</th>
+                            <th class="py-3 px-4">Active Task Prompt</th>
+                            <th class="py-3 px-4 text-right">Interactive Operations</th>
                           </tr>
-                        ) : (
-                          processes.map(proc => (
-                            <tr key={proc.pid}>
-                              <td style={{ fontFamily: 'monospace' }}>{proc.pid}</td>
-                              <td>{proc.agent_name || proc.agent}</td>
-                              <td>{getStatusBadge(proc.state || proc.current_state)}</td>
-                              <td>{proc.current_task || '-'}</td>
-                              <td style={{ color: 'var(--text2)' }}>
-                                {proc.updated_time ? new Date(proc.updated_time).toLocaleTimeString() : '-'}
+                        </thead>
+                        <tbody id="process-tbody" class="divide-y divide-brand-border/60">
+                          {processes.map((proc) => {
+                            const isTerminated = ['COMPLETED', 'FAILED', 'KILLED'].includes(proc.state);
+                            return (
+                              <tr key={proc.pid} class="hover:bg-slate-900/10 transition-colors">
+                                <td class="py-3.5 px-4 font-mono text-xs text-brand-accent">{proc.pid}</td>
+                                <td class="py-3.5 px-4 font-semibold text-slate-200">{proc.agent_name || proc.agent}</td>
+                                <td class="py-3.5 px-4">
+                                  <span class={`px-2.5 py-1 rounded-full text-xs font-bold ${getStatusColor(proc.state)}`}>
+                                    {proc.state}
+                                  </span>
+                                </td>
+                                <td class="py-3.5 px-4 text-xs text-slate-400 font-medium max-w-xs truncate">{proc.current_task}</td>
+                                <td class="py-3.5 px-4 text-right">
+                                  <div class="flex gap-2 justify-end">
+                                    {(proc.state === 'RUNNING' || proc.state === 'READY') && (
+                                      <button
+                                        onClick={() => handleSuspend(proc.pid)}
+                                        class="bg-amber-600/20 hover:bg-amber-600 text-amber-300 hover:text-slate-950 border border-amber-600/30 text-xs font-bold px-2.5 py-1 rounded transition-all duration-200"
+                                      >
+                                        Suspend
+                                      </button>
+                                    )}
+                                    {proc.state === 'SUSPENDED' && (
+                                      <button
+                                        onClick={() => handleResume(proc.pid)}
+                                        class="bg-emerald-600/20 hover:bg-emerald-600 text-emerald-300 hover:text-slate-950 border border-emerald-600/30 text-xs font-bold px-2.5 py-1 rounded transition-all duration-200"
+                                      >
+                                        Resume
+                                      </button>
+                                    )}
+                                    {!isTerminated && (
+                                      <button
+                                        onClick={() => handleKill(proc.pid)}
+                                        class="bg-rose-600/20 hover:bg-rose-600 text-rose-300 hover:text-slate-950 border border-rose-600/30 text-xs font-bold px-2.5 py-1 rounded transition-all duration-200"
+                                      >
+                                        Kill PID
+                                      </button>
+                                    )}
+                                    {proc.state === 'FAILED' && (
+                                      <button
+                                        onClick={() => triggerRecovery(proc.task_id)}
+                                        class="bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-bold px-2.5 py-1 rounded shadow transition-all duration-200"
+                                      >
+                                        Trigger Recovery
+                                      </button>
+                                    )}
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                          {processes.length === 0 && (
+                            <tr>
+                              <td colspan="5" class="py-8 text-center text-slate-500 font-medium">No active processes entries in kernel table.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'agents' && (
+                <div class="space-y-6">
+                  {/* Plugin Portal */}
+                  <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md">
+                    <h2 class="text-md font-bold mb-4 flex items-center gap-2">
+                      <span>🧩</span> Load Dynamic Agent Plugin
+                    </h2>
+                    <form onSubmit={loadPlugin} class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Local File Path (.py)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. app/agents/custom.py"
+                          value={newPlugin.file_path}
+                          onChange={(e) => setNewPlugin({ ...newPlugin, file_path: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        />
+                      </div>
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Python Class Name</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. CustomAgent"
+                          value={newPlugin.class_name}
+                          onChange={(e) => setNewPlugin({ ...newPlugin, class_name: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        />
+                      </div>
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Unique Agent ID</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. custom_coder"
+                          value={newPlugin.agent_id}
+                          onChange={(e) => setNewPlugin({ ...newPlugin, agent_id: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        />
+                      </div>
+                      <button type="submit" class="bg-brand-accent hover:bg-brand-accent/90 text-slate-950 font-bold text-sm px-5 py-2.5 rounded-lg shadow-md transition-all duration-200">
+                        Hot Load Plugin
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Registered Core Agents Grid */}
+                  <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                    {[
+                      { id: 'planner', name: 'Planner', desc: 'Handles high-level workflow task decomposition.', icon: '🗺️' },
+                      { id: 'researcher', name: 'Researcher', desc: 'Queries models for topic backgrounds and docs.', icon: '🔍' },
+                      { id: 'developer', name: 'Developer', desc: 'Writes codebase Python implementations.', icon: '💻' },
+                      { id: 'tester', name: 'Tester', desc: 'Generates unit testing assert verifications.', icon: '🧪' },
+                      { id: 'reviewer', name: 'Reviewer', desc: 'Polishes inputs and audits code syntax quality.', icon: '📋' }
+                    ].map((agt) => (
+                      <div key={agt.id} class="bg-brand-card border border-brand-border p-5 rounded-2xl flex flex-col justify-between hover:border-brand-accent/40 transition-all duration-300">
+                        <div>
+                          <div class="text-3xl mb-3">{agt.icon}</div>
+                          <h3 class="text-md font-bold mb-1.5">{agt.name}</h3>
+                          <p class="text-xs text-slate-400 leading-relaxed mb-4">{agt.desc}</p>
+                        </div>
+                        <div class="flex items-center justify-between text-xs border-t border-brand-border/60 pt-3">
+                          <span class="text-slate-500 font-mono">ID: {agt.id}</span>
+                          <span class="px-2 py-0.5 rounded-full text-emerald-400 bg-emerald-500/10 font-bold border border-emerald-500/20">Active</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'dependencies' && (
+                <div class="space-y-6 flex-1 flex flex-col">
+                  {/* Manual dependency adder form */}
+                  <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md">
+                    <h2 class="text-md font-bold mb-4 flex items-center gap-2">
+                      <span>🔗</span> Establish Manual Dependency Edge
+                    </h2>
+                    <form onSubmit={handleAddDependency} class="grid grid-cols-1 md:grid-cols-3 gap-4 items-end">
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Source Agent (Prerequisite)</label>
+                        <select
+                          value={newDependency.source}
+                          onChange={(e) => setNewDependency({ ...newDependency, source: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        >
+                          <option value="planner">Planner</option>
+                          <option value="researcher">Researcher</option>
+                          <option value="developer">Developer</option>
+                          <option value="tester">Tester</option>
+                          <option value="reviewer">Reviewer</option>
+                        </select>
+                      </div>
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Target Agent (Dependent)</label>
+                        <select
+                          value={newDependency.target}
+                          onChange={(e) => setNewDependency({ ...newDependency, target: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        >
+                          <option value="planner">Planner</option>
+                          <option value="researcher">Researcher</option>
+                          <option value="developer">Developer</option>
+                          <option value="tester">Tester</option>
+                          <option value="reviewer">Reviewer</option>
+                        </select>
+                      </div>
+                      <button type="submit" class="bg-brand-accent hover:bg-brand-accent/90 text-slate-950 font-bold text-sm px-5 py-2.5 rounded-lg shadow-md transition-all duration-200">
+                        Create Link Connection
+                      </button>
+                    </form>
+                  </div>
+
+                  <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md flex-1 flex flex-col">
+                    <div class="flex items-center justify-between mb-4">
+                      <h2 class="text-md font-bold flex items-center gap-2">
+                        <span>🕸️</span> Dependency Topology DAG
+                      </h2>
+                      {dependencyGraph.has_cycle && (
+                        <span class="px-2.5 py-1 rounded bg-rose-500/10 text-rose-400 border border-rose-500/20 text-xs font-bold animate-pulse">
+                          Cycle Warning Detected
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* Topo Order */}
+                    <div class="mb-6 bg-brand-cardLight border border-brand-border p-3 rounded-xl flex items-center gap-2 overflow-x-auto text-xs">
+                      <span class="text-slate-500 font-bold uppercase tracking-wider whitespace-nowrap">Execution Sequence:</span>
+                      {dependencyGraph.topological_order.map((node, i) => (
+                        <React.Fragment key={node}>
+                          {i > 0 && <span class="text-slate-600">➔</span>}
+                          <span class="bg-brand-accent/15 text-brand-accent px-2 py-1 rounded font-semibold font-mono">{node}</span>
+                        </React.Fragment>
+                      ))}
+                      {dependencyGraph.topological_order.length === 0 && <span class="text-slate-500">No nodes in topology.</span>}
+                    </div>
+
+                    {/* SVG Render box */}
+                    <div class="border border-brand-border bg-brand-cardLight/50 rounded-xl flex-1 relative flex items-center justify-center p-6 min-h-[300px]">
+                      <div class="text-center space-y-6">
+                        <div class="flex flex-wrap justify-center gap-8">
+                          {dependencyGraph.nodes.map((node) => (
+                            <div key={node.id} class="bg-brand-card border border-brand-border p-4 rounded-xl shadow-md min-w-[120px] text-center">
+                              <span class="font-bold text-sm block mb-1 text-slate-200">{node.label}</span>
+                              <span class="text-[10px] text-brand-accent font-mono block">Node ID: {node.id}</span>
+                            </div>
+                          ))}
+                        </div>
+                        
+                        <div class="text-xs text-slate-400 pt-4 max-w-xl mx-auto">
+                          <span class="block text-slate-500 uppercase font-bold text-[10px] tracking-wider mb-2">Established Dependency Edges:</span>
+                          <div class="flex flex-wrap justify-center gap-2">
+                            {dependencyGraph.edges.map((e, idx) => (
+                              <div key={idx} class="inline-flex items-center gap-2 bg-slate-900 border border-brand-border px-3 py-1 rounded-full font-mono text-xs text-slate-300">
+                                <span>{e.from} ➔ {e.to}</span>
+                                <button
+                                  onClick={() => handleRemoveDependency(e.from, e.to)}
+                                  class="text-rose-400 hover:text-rose-600 font-bold ml-1"
+                                  title="Delete Link"
+                                >
+                                  ×
+                                </button>
+                              </div>
+                            ))}
+                            {dependencyGraph.edges.length === 0 && <span class="text-slate-500">No dependencies established.</span>}
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'resources' && (
+                <div class="space-y-6">
+                  {/* Resource meters */}
+                  <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+                    {/* CPU */}
+                    <div class="bg-brand-card border border-brand-border p-5 rounded-2xl">
+                      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">CPU Utilization</span>
+                      <div class="text-3xl font-extrabold text-slate-200 mb-4">{systemMetrics.cpu_percent.toFixed(1)}%</div>
+                      <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-brand-border">
+                        <div class="bg-brand-accent h-full transition-all duration-500" style={{ width: `${systemMetrics.cpu_percent}%` }}></div>
+                      </div>
+                    </div>
+                    {/* Memory */}
+                    <div class="bg-brand-card border border-brand-border p-5 rounded-2xl">
+                      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Memory Usage</span>
+                      <div class="text-3xl font-extrabold text-slate-200 mb-4">{systemMetrics.memory.percent.toFixed(1)}%</div>
+                      <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-brand-border">
+                        <div class="bg-indigo-500 h-full transition-all duration-500" style={{ width: `${systemMetrics.memory.percent}%` }}></div>
+                      </div>
+                      <span class="text-[10px] text-slate-500 block mt-2 font-mono">
+                        {(systemMetrics.memory.used / (1024 * 1024 * 1024)).toFixed(1)} GB / {(systemMetrics.memory.total / (1024 * 1024 * 1024)).toFixed(1)} GB
+                      </span>
+                    </div>
+                    {/* Disk */}
+                    <div class="bg-brand-card border border-brand-border p-5 rounded-2xl">
+                      <span class="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-2">Disk Capacity</span>
+                      <div class="text-3xl font-extrabold text-slate-200 mb-4">{systemMetrics.disk.percent.toFixed(1)}%</div>
+                      <div class="w-full bg-slate-950 rounded-full h-3 overflow-hidden border border-brand-border">
+                        <div class="bg-slate-500 h-full transition-all duration-500" style={{ width: `${systemMetrics.disk.percent}%` }}></div>
+                      </div>
+                      <span class="text-[10px] text-slate-500 block mt-2 font-mono">
+                        {(systemMetrics.disk.used / (1024 * 1024 * 1024)).toFixed(1)} GB / {(systemMetrics.disk.total / (1024 * 1024 * 1024)).toFixed(1)} GB
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'memory' && (
+                <div class="space-y-6 flex-1 flex flex-col">
+                  {/* Write Memory Form */}
+                  <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md">
+                    <h2 class="text-md font-bold mb-4 flex items-center gap-2">
+                      <span>✍️</span> Write Key-Value to Shared Memory
+                    </h2>
+                    <form onSubmit={handleWriteMemory} class="grid grid-cols-1 md:grid-cols-4 gap-4 items-end">
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Namespace (Optional)</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. system"
+                          value={newMemory.namespace}
+                          onChange={(e) => setNewMemory({ ...newMemory, namespace: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        />
+                      </div>
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Database Key</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. status_flag"
+                          value={newMemory.key}
+                          onChange={(e) => setNewMemory({ ...newMemory, key: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        />
+                      </div>
+                      <div class="space-y-2">
+                        <label class="text-xs text-slate-400 font-semibold">Serialized Value</label>
+                        <input
+                          type="text"
+                          placeholder="e.g. active"
+                          value={newMemory.value}
+                          onChange={(e) => setNewMemory({ ...newMemory, value: e.target.value })}
+                          class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                        />
+                      </div>
+                      <button type="submit" class="bg-brand-accent hover:bg-brand-accent/90 text-slate-950 font-bold text-sm px-5 py-2.5 rounded-lg shadow-md transition-all duration-200">
+                        Commit Memory
+                      </button>
+                    </form>
+                  </div>
+
+                  {/* Active Memory items */}
+                  <div id="memory-viewer" class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md flex-1 flex flex-col">
+                    <h2 class="text-md font-bold mb-4 flex items-center gap-2">
+                      <span>💾</span> Shared Memory State Database
+                    </h2>
+                    <div class="overflow-x-auto flex-1">
+                      <table class="w-full text-left text-sm">
+                        <thead>
+                          <tr class="border-b border-brand-border text-slate-400">
+                            <th class="py-3 px-4 font-semibold">Memory Key String</th>
+                            <th class="py-3 px-4 font-semibold">Stored Value Data</th>
+                            <th class="py-3 px-4 text-right font-semibold">Action Operations</th>
+                          </tr>
+                        </thead>
+                        <tbody class="divide-y divide-brand-border/60">
+                          {Object.entries(memorySnapshot).map(([k, val]) => (
+                            <tr key={k} class="hover:bg-slate-900/10">
+                              <td class="py-3.5 px-4 font-mono text-xs text-brand-accent">{k}</td>
+                              <td class="py-3.5 px-4 font-mono text-xs text-slate-300 max-w-sm truncate">{JSON.stringify(val)}</td>
+                              <td class="py-3.5 px-4 text-right">
+                                <button
+                                  onClick={() => handleDeleteMemory(k)}
+                                  class="bg-rose-500/20 hover:bg-rose-500 text-rose-300 hover:text-slate-950 border border-rose-500/30 text-xs font-bold px-2.5 py-1 rounded transition-colors"
+                                >
+                                  Delete
+                                </button>
                               </td>
                             </tr>
-                          ))
-                        )}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-                {activeTab === 'graph' && (
-                  <div className="flow-container">
-                    <ReactFlow
-                      nodes={nodes}
-                      edges={edges}
-                      onNodesChange={onNodesChange}
-                      onEdgesChange={onEdgesChange}
-                      onConnect={(params) => setEdges((eds) => addEdge(params, eds))}
-                      nodeTypes={nodeTypes}
-                      fitView
-                    >
-                      <Background />
-                      <Controls />
-                      <MiniMap />
-                    </ReactFlow>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Right Column */}
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div className="card">
-                <div className="card-header">
-                  <div className="card-title">Shared Memory</div>
-                </div>
-                <div id="memory-viewer" className="card-body">
-                  {Object.keys(memory).length === 0 ? (
-                    <div style={{ textAlign: 'center', padding: '20px', color: 'var(--text2)' }}>
-                      No memory keys yet
+                          ))}
+                          {Object.keys(memorySnapshot).length === 0 && (
+                            <tr>
+                              <td colspan="3" class="py-8 text-center text-slate-500">No entries saved in the shared memory database.</td>
+                            </tr>
+                          )}
+                        </tbody>
+                      </table>
                     </div>
-                  ) : (
-                    Object.entries(memory).map(([ns, entries]) => (
-                      <div key={ns} style={{ marginBottom: '16px' }}>
-                        <div style={{ fontWeight: 600, color: 'var(--blue)', marginBottom: '8px' }}>{ns}</div>
-                        {Object.entries(entries).map(([k, v]) => (
-                          <div key={k} className="memory-item">
-                            <span className="memory-key">{k}</span>
-                            <span className="memory-value">{typeof v === 'string' ? v : JSON.stringify(v)}</span>
-                          </div>
-                        ))}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'events' && (
+                <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md flex-1 flex flex-col">
+                  <h2 class="text-md font-bold mb-4 flex items-center gap-2">
+                    <span>📢</span> Event Bus Published Stream
+                  </h2>
+                  <div class="flex-1 overflow-y-auto space-y-3 font-mono text-xs">
+                    {events.map((evt, index) => (
+                      <div key={index} class="bg-brand-cardLight border border-brand-border p-3.5 rounded-xl flex flex-col md:flex-row md:items-center justify-between gap-3">
+                        <div class="flex items-center gap-3">
+                          <span class="bg-brand-accent/10 border border-brand-accent/20 px-2 py-0.5 rounded text-brand-accent font-bold uppercase tracking-wider">{evt.event_type}</span>
+                          <span class="text-slate-200">{evt.payload?.details || evt.payload?.task || 'Event Dispatched'}</span>
+                        </div>
+                        <div class="text-slate-500 flex gap-4">
+                          <span>Source: {evt.payload?.agent_id || 'System'}</span>
+                          <span>{new Date(evt.timestamp).toLocaleTimeString()}</span>
+                        </div>
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-
-              <div className="card" style={{ flex: 1 }}>
-                <div className="card-header">
-                  <div className="card-title">Checkpoints & Events</div>
-                </div>
-                <div className="card-body">
-                  <div style={{ marginBottom: '16px' }}>
-                    <div style={{ marginBottom: '8px', fontWeight: 600, fontSize: '0.85rem' }}>Checkpoints</div>
-                    {checkpoints.length === 0 ? (
-                      <div style={{ color: 'var(--text2)', fontSize: '0.85rem' }}>No checkpoints yet</div>
-                    ) : (
-                      checkpoints.map(cp => (
-                        <div key={cp.id} style={{ padding: '8px 0', borderBottom: '1px solid var(--border)', fontSize: '0.85rem' }}>
-                          <div style={{ fontWeight: 600 }}>{cp.name}</div>
-                          <div style={{ color: 'var(--text2)' }}>{new Date(cp.created_at).toLocaleString()}</div>
-                        </div>
-                      ))
-                    )}
-                  </div>
-
-                  <div>
-                    <div style={{ marginBottom: '8px', fontWeight: 600, fontSize: '0.85rem' }}>Events</div>
-                    {events.length === 0 ? (
-                      <div style={{ color: 'var(--text2)', fontSize: '0.85rem' }}>No events yet</div>
-                    ) : (
-                      events.map((evt, i) => (
-                        <div key={i} style={{ padding: '4px 0', fontSize: '0.8rem', borderBottom: '1px solid var(--border)' }}>
-                          <span style={{ color: 'var(--blue)' }}>{evt.type}</span>
-                          <span style={{ color: 'var(--text2)', marginLeft: '8px' }}>
-                            {new Date(evt.timestamp).toLocaleTimeString()}
-                          </span>
-                        </div>
-                      ))
+                    ))}
+                    {events.length === 0 && (
+                      <div class="text-center py-8 text-slate-500">No events published in current session.</div>
                     )}
                   </div>
                 </div>
-              </div>
-            </div>
+              )}
 
-            {/* Bottom Section - Dependency Graph */}
-            <div className="card" style={{ gridColumn: '1 / -1', height: '400px' }}>
-              <div className="card-header">
-                <div className="card-title">Dependency Graph</div>
-              </div>
-              <div className="card-body" style={{ padding: 0 }}>
-                <iframe
-                  src="/dependencies/visualize"
-                  style={{ width: '100%', height: '100%', border: 'none' }}
-                  title="Dependency Graph"
-                />
-              </div>
-            </div>
+              {activeTab === 'logs' && (
+                <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md flex-1 flex flex-col">
+                  <h2 class="text-md font-bold mb-4 flex items-center gap-2">
+                    <span>📝</span> Standard I/O Logs Output Traces
+                  </h2>
+                  <div class="flex-1 overflow-y-auto space-y-4">
+                    {logsList.map((log, index) => (
+                      <div key={index} class="border border-brand-border rounded-xl overflow-hidden shadow-sm">
+                        <div class="bg-brand-cardLight border-b border-brand-border px-4 py-2.5 flex items-center justify-between text-xs text-slate-400">
+                          <span>Agent Run: <strong class="text-brand-accent">{log.agent_id}</strong></span>
+                          <span>Timestamp: {new Date(log.timestamp).toLocaleTimeString()}</span>
+                        </div>
+                        <div class="p-4 bg-brand-bg/50 font-mono text-xs text-emerald-400 leading-relaxed overflow-x-auto whitespace-pre">
+                          {log.stdout && (
+                            <div>
+                              <span class="text-brand-accent font-bold block mb-1">STDOUT:</span>
+                              {log.stdout}
+                            </div>
+                          )}
+                          {log.stderr && (
+                            <div class="mt-3">
+                              <span class="text-rose-400 font-bold block mb-1">STDERR:</span>
+                              {log.stderr}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                    {logsList.length === 0 && (
+                      <div class="text-center py-8 text-slate-500">No I/O trace captures available. Run tasks to populate logs.</div>
+                    )}
+                  </div>
+                </div>
+              )}
+
+              {activeTab === 'settings' && (
+                <div class="bg-brand-card border border-brand-border rounded-2xl p-6 shadow-md max-w-2xl">
+                  <h2 class="text-md font-bold mb-6 flex items-center gap-2">
+                    <span>⚙️</span> Global Microkernel & LLM Settings
+                  </h2>
+                  <form onSubmit={updateSettings} class="space-y-6">
+                    {/* Qwen Cloud API Key */}
+                    <div class="space-y-2">
+                      <label class="text-sm font-semibold text-slate-300 block">Qwen / DashScope API Key</label>
+                      <input
+                        type="password"
+                        placeholder="sk-..."
+                        value={settings.qwen_api_key}
+                        onChange={(e) => setSettings({ ...settings, qwen_api_key: e.target.value })}
+                        class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full font-mono"
+                      />
+                      <p class="text-xs text-slate-500 leading-relaxed">Required to call Alibaba Cloud Qwen Models. Leave empty to use offline mock responses.</p>
+                    </div>
+
+                    {/* Qwen Base URL */}
+                    <div class="space-y-2">
+                      <label class="text-sm font-semibold text-slate-300 block">Qwen API Base Endpoint Compatibility URL</label>
+                      <input
+                        type="text"
+                        placeholder="https://dashscope.aliyuncs.com/compatible-mode/v1"
+                        value={settings.qwen_base_url}
+                        onChange={(e) => setSettings({ ...settings, qwen_base_url: e.target.value })}
+                        class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                      />
+                    </div>
+
+                    {/* Qwen Model */}
+                    <div class="space-y-2">
+                      <label class="text-sm font-semibold text-slate-300 block">Qwen Model Identifier</label>
+                      <input
+                        type="text"
+                        placeholder="qwen-max"
+                        value={settings.qwen_model}
+                        onChange={(e) => setSettings({ ...settings, qwen_model: e.target.value })}
+                        class="bg-brand-cardLight border border-brand-border px-3 py-2 rounded-lg text-sm text-slate-200 focus:outline-none w-full"
+                      />
+                    </div>
+
+                    {/* Parallel slots limit */}
+                    <div class="space-y-2 pt-2 border-t border-brand-border/60">
+                      <label class="text-sm font-semibold text-slate-300 block">Parallel Execution slots limit (Max Thread Workers)</label>
+                      <div class="flex items-center gap-4">
+                        <input
+                          type="range"
+                          min="1"
+                          max="16"
+                          value={settings.max_workers}
+                          onChange={(e) => setSettings({ ...settings, max_workers: parseInt(e.target.value) })}
+                          class="w-full accent-brand-accent h-1.5 bg-slate-900 rounded-lg appearance-none border border-brand-border cursor-pointer"
+                        />
+                        <span class="font-mono font-bold text-brand-accent text-md bg-brand-cardLight border border-brand-border px-3 py-1.5 rounded-lg min-w-[45px] text-center">
+                          {settings.max_workers}
+                        </span>
+                      </div>
+                      <p class="text-xs text-slate-500 leading-relaxed">Adjusts the thread allocation bounds managed by the concurrent ThreadPoolExecutor wrapper.</p>
+                    </div>
+
+                    <button type="submit" class="bg-brand-accent hover:bg-brand-accent/90 text-slate-950 font-bold text-sm px-6 py-2.5 rounded-lg shadow-md transition-all duration-200">
+                      Apply & Persist configurations
+                    </button>
+                  </form>
+                </div>
+              )}
+            </main>
           </div>
         </div>
       );
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<Dashboard />);
+    const container = document.getElementById('root');
+    const root = ReactDOM.createRoot(container);
+    root.render(<App />);
   </script>
 </body>
 </html>

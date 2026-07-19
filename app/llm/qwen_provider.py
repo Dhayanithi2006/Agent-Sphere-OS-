@@ -12,41 +12,21 @@ from app.core.logger import get_logger
 
 
 class QwenProvider(BaseModelProvider):
-    """A provider that routes prompts to Qwen Cloud endpoints."""
+    """A provider that routes prompts to Qwen Cloud endpoints using QwenClient."""
 
-    def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str = "qwen-v1") -> None:
+    def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str = "qwen-max") -> None:
         super().__init__(name="qwen")
-        self.base_url = base_url or os.getenv("AGENTSPHERE_QWEN_API_URL", "https://api.qwen.com/v1/chat/completions")
-        self.api_key = api_key or os.getenv("AGENTSPHERE_QWEN_API_KEY")
+        from app.llm.qwen_client import QwenClient
+        self.client = QwenClient(base_url=base_url, api_key=api_key, model=model)
         self.model = model
         self.logger = get_logger("agentsphere.llm.qwen_provider")
 
     def generate(self, prompt: str, **kwargs: Any) -> str:
-        """Send a prompt to the Qwen-compatible model endpoint."""
-        if not self.api_key:
-            self.logger.warning("Qwen API key is not configured, falling back to a stub response")
-            return f"[qwen stub] {prompt}"
+        """Send a prompt to the Qwen-compatible model endpoint using unified QwenClient."""
+        model_override = kwargs.pop("model", self.model)
+        res = self.client.generate(prompt, model=model_override, **kwargs)
+        if isinstance(res, str):
+            return res
+        # If generator/stream is returned, compile it to string
+        return "".join(list(res))
 
-        payload = {
-            "model": self.model,
-            "messages": [{"role": "user", "content": prompt}],
-            **kwargs,
-        }
-        headers = {
-            "Authorization": f"Bearer {self.api_key}",
-            "Content-Type": "application/json",
-        }
-
-        response = requests.post(self.base_url, json=payload, headers=headers, timeout=30)
-        response.raise_for_status()
-        data = response.json()
-        if not data:
-            return ""
-
-        if isinstance(data, dict):
-            if "choices" in data and data["choices"]:
-                delta = data["choices"][0].get("message")
-                return delta.get("content", "") if isinstance(delta, dict) else str(delta)
-            return str(data)
-
-        return str(data)

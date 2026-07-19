@@ -13,8 +13,11 @@ class ProcessStatus(str, Enum):
 
     CREATED = "created"
     RUNNING = "running"
+    SUSPENDED = "suspended"
     STOPPED = "stopped"
     FAILED = "failed"
+    KILLED = "killed"
+
 
 
 @dataclass(slots=True)

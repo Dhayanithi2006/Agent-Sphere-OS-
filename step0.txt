@@ -1,0 +1,683 @@
+<USER_REQUEST>
+Yes. After analyzing everything we've discussed, I would not continue the old AgentSphere OS. I would build AgentSphere OS v4 (Microkernel) because it is:
+
+✅ More aligned with the Qwen Hackathon judging criteria.
+✅ More realistic for production.
+✅ Easier to explain to judges.
+✅ Uses Qwen Cloud as a core service.
+✅ Can demonstrate real AI infrastructure instead of only agent workflows.
+✅ Combines Track 2 (AI Showrunner) and Track 3 (Agent Society).
+Final Project
+AgentSphere OS v4
+Microkernel Operating System for Autonomous AI Production
+
+"A Microkernel Operating System that manages AI agents as operating system processes, enabling reliable, fault-tolerant and cost-efficient autonomous production pipelines."
+
+Development Strategy
+
+Don't generate everything at once.
+
+Generate one module at a time.
+
+Each module should be production ready.
+
+Every module must contain
+
+folder structure
+backend
+tests
+documentation
+APIs
+logging
+typing
+comments
+Overall Architecture
+                    React Dashboard
+                           │
+                    FastAPI Gateway
+                           │
+──────────────────────────────────────────────────
+             AgentSphere Microkernel
+──────────────────────────────────────────────────
+
+Supervisor
+Scheduler
+Dependency Manager
+Recovery Engine
+Checkpoint Manager
+Event Bus
+Shared Memory
+Resource Manager
+Plugin Manager
+Model Router
+
+──────────────────────────────────────────────────
+
+Agent Workers
+
+Planner
+Writer
+Storyboard
+Character
+Scene
+Video
+Audio
+Editor
+Reviewer
+Publisher
+
+──────────────────────────────────────────────────
+
+Tool Registry
+
+Qwen
+Wan
+HappyHorse
+Python
+Browser
+Git
+Docker
+OSS
+Redis
+SQLite
+Qdrant
+
+──────────────────────────────────────────────────
+
+Storage
+
+Redis
+SQLite
+Qdrant
+Alibaba OSS
+Development Roadmap
+
+Instead of 14 modules,
+
+build 18 production modules
+
+MODULE 1
+Runtime Environment
+
+Prompt
+
+Build Module 1 of AgentSphere OS v4.
+
+Project Type:
+Microkernel AI Operating System
+
+Requirements
+
+Use
+
+Python 3.13
+FastAPI
+Pydantic V2
+Structured Logging
+Environment Configuration
+
+Folder Structure
+
+app/
+core/
+config/
+logging/
+models/
+tests/
+
+Implement
+
+Application bootstrap
+Configuration manager
+Logging
+Health endpoint
+Startup lifecycle
+Shutdown lifecycle
+
+Requirements
+
+Use dependency injection
+
+Typed configuration
+
+Support .env
+
+Unit tests
+
+Code must follow SOLID principles.
+
+Every class documented.
+
+Return complete production ready code.
+MODULE 2
+Microkernel
+
+Prompt
+
+Build Module 2.
+
+Implement the AgentSphere Microkernel.
+
+Responsibilities
+
+Kernel boot
+
+Process Manager
+
+PID allocation
+
+Process lifecycle
+
+Kernel events
+
+Kernel APIs
+
+Support
+
+Create process
+
+Kill process
+
+Suspend
+
+Resume
+
+Status
+
+Maintain process table.
+
+Everything should be asynchronous.
+
+Provide tests.
+
+Use repository pattern.
+
+Production ready.
+MODULE 3
+Supervisor Engine
+
+Prompt
+
+Build Module 3.
+
+Implement Supervisor Engine.
+
+Responsibilities
+
+Register agents
+
+Assign tasks
+
+Monitor execution
+
+Track status
+
+Dispatch work
+
+Retry failed tasks
+
+Provide REST APIs.
+
+Maintain execution metadata.
+
+Support plugin agents.
+
+Return production ready implementation.
+MODULE 4
+Event Bus
+
+Prompt
+
+Build Module 4.
+
+Implement asynchronous Event Bus.
+
+Support
+
+Publish
+
+Subscribe
+
+Priority events
+
+Event persistence
+
+Replay
+
+Dead Letter Queue
+
+WebSocket broadcasting
+
+Use asyncio.
+
+Provide complete implementation with tests.
+MODULE 5
+Shared Memory
+
+Prompt
+
+Build Module 5.
+
+Implement Hybrid Memory.
+
+Memory Types
+
+Redis
+
+SQLite
+
+Vector Memory abstraction
+
+Support
+
+Namespaces
+
+Transactions
+
+Versioning
+
+Memory snapshots
+
+Memory locking
+
+Concurrent writes
+
+Production implementation.
+
+MODULE 6
+Scheduler
+
+Prompt
+
+Build intelligent scheduler.
+
+Support
+
+Priority scheduling
+
+Round Robin
+
+Dependency aware scheduling
+
+Parallel execution
+
+Execution queues
+
+Dynamic load balancing
+
+Provide benchmarking tests.
+
+MODULE 7
+Dependency Manager
+
+Prompt
+
+Implement dependency graph.
+
+Support
+
+DAG
+
+Cycle detection
+
+Topological sorting
+
+Affected node detection
+
+Partial execution
+
+Graph visualization API.
+
+MODULE 8
+Checkpoint Manager
+
+Prompt
+
+Implement checkpoint system.
+
+Store
+
+Memory
+
+Execution state
+
+Dependency graph
+
+Outputs
+
+Version history
+
+Rollback
+
+Incremental checkpoints
+
+SQLite persistence
+
+Compression support
+
+MODULE 9
+Recovery Engine
+
+Prompt
+
+Implement selective rollback engine.
+
+Detect failures
+
+Analyze dependency graph
+
+Recover only affected agents
+
+Automatic retries
+
+Rollback checkpoints
+
+Failure reports
+
+Metrics
+
+MODULE 10
+Model Router
+
+This is the biggest upgrade.
+
+Prompt
+
+Implement Model Router.
+
+Primary Provider
+
+Qwen Cloud
+
+Supported Models
+
+Qwen Max
+
+Qwen Plus
+
+Qwen Coder
+
+Qwen VL
+
+Wan Video
+
+HappyHorse
+
+Responsibilities
+
+Dynamic routing
+
+Retry
+
+Rate limiting
+
+Caching
+
+Cost tracking
+
+Fallback
+
+Streaming
+
+OpenAI compatible interface.
+
+MODULE 11
+Resource Manager
+
+Prompt
+
+Implement Resource Manager.
+
+Track
+
+Tokens
+
+API cost
+
+Latency
+
+Memory
+
+CPU
+
+Agent execution time
+
+Budgets
+
+Automatic kill switch
+
+Alerts
+
+Dashboard APIs
+
+MODULE 12
+Plugin Manager
+
+Prompt
+
+Implement plugin architecture.
+
+Support
+
+Dynamic loading
+
+Hot reload
+
+Agent plugins
+
+Tool plugins
+
+Versioning
+
+Permissions
+
+Plugin discovery
+
+MODULE 13
+Tool Registry
+
+Prompt
+
+Implement Tool Registry.
+
+Support
+
+Python
+
+Browser
+
+Git
+
+Filesystem
+
+Docker
+
+Qwen Skills
+
+Search
+
+OCR
+
+Image generation
+
+Video generation
+
+Voice
+
+REST APIs
+
+MODULE 14
+Execution Engine
+
+Prompt
+
+Implement sandbox execution.
+
+Docker containers
+
+Timeout
+
+Resource limits
+
+Cancellation
+
+Streaming logs
+
+Execution monitoring
+
+MODULE 15
+Agent Workers
+
+Prompt
+
+Implement production Agent Workers.
+
+Planner
+
+Researcher
+
+Writer
+
+Storyboard
+
+Character
+
+Scene
+
+Video
+
+Voice
+
+Editor
+
+Reviewer
+
+Publisher
+
+Each agent inherits BaseAgent.
+
+MODULE 16
+Dashboard Backend
+
+Prompt
+
+Build backend APIs.
+
+Provide
+
+Realtime websocket
+
+System metrics
+
+Dependency graph
+
+Execution graph
+
+Token graph
+
+Cost graph
+
+Checkpoint visualization
+
+MODULE 17
+React Dashboard
+
+Prompt
+
+Build React Dashboard.
+
+Pages
+
+Task Manager
+
+Agents
+
+Dependency Graph
+
+Resource Monitor
+
+Memory
+
+Events
+
+Logs
+
+Settings
+
+Use Tailwind.
+
+Modern UI.
+
+MODULE 18
+Deployment
+
+Prompt
+
+Prepare production deployment.
+
+Docker Compose
+
+Alibaba Cloud
+
+Redis
+
+SQLite
+
+Qdrant
+
+Nginx
+
+GitHub Actions
+
+CI/CD
+
+Monitoring
+
+Health checks
+
+README
+
+Architecture Diagram
+
+OpenAPI Docs
+
+Final Demo (Hackathon Flow)
+
+Your 3-minute demo should tell a compelling story:
+
+User enters a prompt: "Create a 2-minute animated product advertisement."
+The Microkernel boots a new process and assigns it a PID.
+The Supervisor decomposes the work into specialized agents (Writer → Storyboard → Scene → Video → Voice → Editor → Reviewer).
+The Scheduler runs independent tasks in parallel where possible.
+The Model Router intelligently chooses the right Qwen model (e.g., Qwen-Max for planning, Qwen-Coder for code, Wan for video generation).
+The Checkpoint Manager saves progress after every stage.
+Simulate a failure in the Video Agent to demonstrate the Recovery Engine, which restores only that stage instead of restarting the entire pipeline.
+The Dashboard visualizes PIDs, dependency graphs, events, token usage, and API costs in real time.
+The finished video is stored in Alibaba OSS, and the user receives the final output.
+Why this version has the highest chance of winning
+
+This architecture aligns strongly with the judging criteria:
+
+Technical Depth (30%): Microkernel architecture, event-driven execution, checkpointing, selective recovery, dynamic model routing, plugin system, and hybrid memory demonstrate significant engineering sophistication.
+Innovation & AI Creativity (30%): Treating AI agents as operating system processes is a novel infrastructure approach rather than a conventional workflow.
+Problem Value & Impact (25%): The platform can support AI Showrunner today and extend to enterprise automation, autonomous software engineering, research assistants, and multi-agent orchestration tomorrow.
+Presentation & Documentation (15%): The dashboard, architecture diagram, live recovery demo, and clear module separation make the project easy for judges to understand and evaluate.
+
+If executed well, this project is more than a hackathon submission—it becomes
+</USER_REQUEST>
+<ADDITIONAL_METADATA>
+The current local time is: 2026-07-16T16:27:20+05:30.
+
+The user's current state is as follows:
+Active Document: d:\Desktop\Hackathon\eco-sphere\README.md (LANGUAGE_MARKDOWN)
+Cursor is on line: 17
+Other open documents:
+- d:\Desktop\Hackathon\eco-sphere\addons\ecosphere_environmental\security\security.xml (LANGUAGE_XML)
+- d:\Desktop\Hackathon\eco-sphere\addons\ecosphere_gamification\models\badge.py (LANGUAGE_PYTHON)
+- d:\Desktop\Hackathon\eco-sphere\addons\ecosphere_governance\models\risk.py (LANGUAGE_PYTHON)
+- d:\Desktop\Hackathon\eco-sphere\addons\ecosphere_governance\models\compliance_issue.py (LANGUAGE_PYTHON)
+- d:\Desktop\Hackathon\eco-sphere\addons\ecosphere_governance\__manifest__.py (LANGUAGE_PYTHON)
+</ADDITIONAL_METADATA>
+<USER_SETTINGS_CHANGE>
+The user changed setting `Model Selection` from None to Gemini 3.5 Flash (High). No need to comment on this change if the user doesn't ask about it. If reporting what model you are, please use a human readable name instead of the exact string.
+</USER_SETTINGS_CHANGE>
