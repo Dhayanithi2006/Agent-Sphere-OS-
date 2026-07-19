@@ -1,24 +1,23 @@
-"""Application entrypoint for AgentSphere OS."""
+"""Application entrypoint for AgentSphere OS v4 Microkernel."""
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
+from __future__ import annotations
 
-from app.api.routes import router
+from app.core.bootstrap import AppBootstrap
+from app.core.config import settings
 
-app = FastAPI(title="AgentSphere OS", version="0.1.0")
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(router)
-
+if __name__ != "__main__":
+    # Initialize runtime environment and build FastAPI instance
+    bootstrapper = AppBootstrap(settings)
+    app = bootstrapper.create_app()
+else:
+    app = None
 
 if __name__ == "__main__":
     import uvicorn
 
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    uvicorn.run(
+        "main:app",
+        host=settings.host,
+        port=settings.port,
+        reload=settings.environment == "development",
+    )

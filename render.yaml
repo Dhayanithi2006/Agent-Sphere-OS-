@@ -1,0 +1,39 @@
+services:
+  # ── Backend: FastAPI (AgentSphere OS) ─────────────────────────────────────
+  - type: web
+    name: agentsphere-os-backend
+    runtime: python
+    region: singapore
+    plan: free
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: AGENTSPHERE_ENV
+        value: production
+      - key: QWEN_API_KEY
+        sync: false          # Set this manually in Render dashboard
+      - key: QWEN_BASE_URL
+        value: https://dashscope-intl.aliyuncs.com/compatible-mode/v1
+      - key: QWEN_MODEL
+        value: qwen3.7-plus
+      - key: QWEN_MODEL_MAX
+        value: qwen3.7-max
+      - key: QWEN_MODEL_PLUS
+        value: qwen3.7-plus
+      - key: WAN_VIDEO_MODEL
+        value: happyhorse-1.1-t2v
+      - key: HAPPYHORSE_T2V_MODEL
+        value: happyhorse-1.1-t2v
+      - key: HAPPYHORSE_I2V_MODEL
+        value: happyhorse-1.1-i2v
+      - key: QWEN_IMAGE_MODEL
+        value: wanx-v1
+      - key: QWEN_TIMEOUT
+        value: "60"
+      - key: QWEN_MAX_RETRIES
+        value: "3"
+      - key: HOST
+        value: "0.0.0.0"
+      - key: CORS_ORIGINS
+        value: "*"
+    healthCheckPath: /health

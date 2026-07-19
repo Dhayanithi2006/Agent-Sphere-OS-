@@ -1,2 +1,38 @@
+# Python
 *.__pycache__
+__pycache__/
+*.pyc
+*.pyo
 *.sqlite
+*.sqlite3
+
+# Environment
+.env
+.env.*
+
+# Next.js build output
+frontend/.next/
+frontend/node_modules/
+node_modules/
+frontend/out/
+
+
+# Python virtual environment
+venv/
+.venv/
+
+# Generated workspace files (runtime output)
+app/static/workspace/
+app/static/assets/releases/
+app/static/output/
+workspace/
+
+# Test artifacts
+test_connection.py
+test_full_system.py
+test_processor.py
+check_state.py
+
+# Pytest cache
+.pytest_cache/
+tests/__pycache__/
