@@ -215,7 +215,7 @@ class ModelRouter:
 
         # Last resort fallback: direct QwenClient
         try:
-            model = kwargs.pop("model", "qwen-max")
+            model = kwargs.pop("model", settings.qwen_model_max)
             before_usage = None
             if hasattr(self.client, "get_usage"):
                 try:

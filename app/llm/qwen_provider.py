@@ -14,11 +14,15 @@ from app.core.logger import get_logger
 class QwenProvider(BaseModelProvider):
     """A provider that routes prompts to Qwen Cloud endpoints using QwenClient."""
 
-    def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str = "qwen-max") -> None:
+    def __init__(self, base_url: str | None = None, api_key: str | None = None, model: str | None = None) -> None:
         super().__init__(name="qwen")
         from app.llm.qwen_client import QwenClient
-        self.client = QwenClient(base_url=base_url, api_key=api_key, model=model)
-        self.model = model
+        from app.core.config import settings as _settings
+        # Use the configured model from env/settings; fall back to qwen3.7-plus.
+        # Do NOT hardcode legacy model names (e.g. 'qwen-max') that are no longer valid.
+        resolved_model = model or _settings.qwen_model_plus
+        self.client = QwenClient(base_url=base_url, api_key=api_key, model=resolved_model)
+        self.model = resolved_model
         self.logger = get_logger("agentsphere.llm.qwen_provider")
 
     def generate(self, prompt: str, **kwargs: Any) -> str:
