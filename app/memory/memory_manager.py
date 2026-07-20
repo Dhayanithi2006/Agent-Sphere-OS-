@@ -48,6 +48,48 @@ class MemoryManager:
         self._ensure_schema()
         self._init_redis()
 
+    # ---------------------------------------------------------------------------
+    # Connection Lifecycle
+    # ---------------------------------------------------------------------------
+
+    def close(self) -> None:
+        """Release the SQLite connection and any Redis client.
+
+        Must be called when the MemoryManager is no longer needed — especially
+        in tests that use tempfile.TemporaryDirectory on Windows, where open
+        file handles prevent the temp dir from being deleted (WinError 32).
+        """
+        with self._thread_lock:
+            if self._connection is not None:
+                try:
+                    # Call the base-class close() directly so InMemoryConnection's
+                    # no-op override does not silently skip the actual release.
+                    sqlite3.Connection.close(self._connection)
+                except Exception:
+                    pass
+                self._connection = None
+        if self._redis_client is not None:
+            try:
+                self._redis_client.close()
+            except Exception:
+                pass
+            self._redis_client = None
+
+    def __enter__(self) -> "MemoryManager":
+        """Support `with MemoryManager(...) as mem:` usage."""
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        """Close the connection when leaving a `with` block."""
+        self.close()
+
+    def __del__(self) -> None:
+        """Best-effort cleanup when the object is garbage-collected."""
+        try:
+            self.close()
+        except Exception:
+            pass
+
     def _ensure_parent_directory(self) -> None:
         if self._db_path == ":memory:":
             return
