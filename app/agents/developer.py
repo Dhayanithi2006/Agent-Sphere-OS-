@@ -199,6 +199,23 @@ class DeveloperAgent(BaseAgent):
         prompt = f"Implement the following requirement: {requirement}\n\nProvide complete, working code with proper file structure. Use fenced code blocks (```html, ```css, ```javascript, ```python etc.) for each file."
         raw_output = self._get_router().route("developer", prompt)
 
+        # ── Unwrap JSON envelope added by model_router TOOL-FIRST RULE ──────────
+        # The router wraps every LLM call in a JSON object:
+        #   {"thought": "...", "tool_required": false, "result": "```html...```"}
+        # We must extract the `result` field so the regex finds the actual code
+        # blocks, even when the LLM properly escapes newlines inside the JSON.
+        try:
+            import json as _json
+            _cleaned = raw_output.strip()
+            if _cleaned.startswith('{'):
+                _parsed = _json.loads(_cleaned)
+                if isinstance(_parsed, dict) and not _parsed.get("tool_required", True):
+                    _result_val = _parsed.get("result") or _parsed.get("thought", "")
+                    if _result_val and isinstance(_result_val, str):
+                        raw_output = _result_val
+        except Exception:
+            pass  # Keep raw_output as-is if not valid JSON
+
         # Detect output type
         output_type = _detect_output_type(requirement, raw_output)
 

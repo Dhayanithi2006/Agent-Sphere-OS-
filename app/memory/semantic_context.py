@@ -10,7 +10,7 @@ memory_agent = MemoryAgent()
 def enrich_prompt_with_memories(prompt: str) -> str:
     """Retrieve semantically relevant memories and inject them into the LLM system prompt context."""
     # Check if this prompt relates to preferences/genres we track
-    keywords = ["anime", "marvel", "superhero", "dark", "style", "voice", "duration"]
+    keywords = ["anime", "marvel", "superhero", "style", "voice", "duration", "genre", "tone"]
     if not any(kw in prompt.lower() for kw in keywords):
         return prompt
 

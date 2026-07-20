@@ -97,6 +97,17 @@ class ExecutionEngine:
                     self.logger.debug("[EXEC] Raw response from '%s': %s", agent.agent_id, str(step_output)[:200])
                     
                     try:
+                        # ── Short-circuit for AgentString with developer metadata ──
+                        # DeveloperAgent returns an AgentString (str subclass) with a
+                        # `.metadata` dict (files, preview_url, etc.).  If we let the
+                        # JSON-parsing loop continue it would extract only the bare
+                        # `result` string and discard all metadata.  Break out early.
+                        from app.agents.developer import AgentString as _AgentString
+                        if isinstance(step_output, _AgentString) and step_output.metadata:
+                            output = step_output  # preserve AgentString + metadata
+                            success = True
+                            break
+
                         cleaned = step_output.strip()
                         if cleaned.startswith("```json"):
                             cleaned = cleaned[7:]
