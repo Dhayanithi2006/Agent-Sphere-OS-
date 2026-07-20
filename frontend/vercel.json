@@ -5,7 +5,7 @@
   "framework": "nextjs",
   "regions": ["sin1"],
   "env": {
-    "NEXT_PUBLIC_API_URL": "https://agentsphere-os-backend.onrender.com"
+    "NEXT_PUBLIC_API_URL": "https://agentsphere-os.onrender.com"
   },
   "headers": [
     {
