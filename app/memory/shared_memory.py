@@ -37,33 +37,24 @@ class SharedMemory(MemoryManager):
         """Clear database tables."""
         with self._thread_lock:
             connection = self._connect()
-            try:
-                connection.execute("DELETE FROM memory_items")
-                connection.execute("DELETE FROM memory_versions")
-                connection.execute("DELETE FROM vector_items")
-                connection.commit()
-            finally:
-                connection.close()
+            connection.execute("DELETE FROM memory_items")
+            connection.execute("DELETE FROM memory_versions")
+            connection.execute("DELETE FROM vector_items")
+            connection.commit()
 
     def keys(self) -> List[str]:
         """Fetch all keys (legacy interface)."""
         with self._thread_lock:
             connection = self._connect()
-            try:
-                rows = connection.execute("SELECT key FROM memory_items ORDER BY key").fetchall()
-                return [row["key"] for row in rows]
-            finally:
-                connection.close()
+            rows = connection.execute("SELECT key FROM memory_items ORDER BY key").fetchall()
+            return [row["key"] for row in rows]
 
     def snapshot(self) -> Dict[str, Any]:
         """Dump active database key-value state (legacy interface)."""
         with self._thread_lock:
             connection = self._connect()
-            try:
-                rows = connection.execute("SELECT key, value FROM memory_items ORDER BY key").fetchall()
-                return {row["key"]: json.loads(row["value"]) for row in rows}
-            finally:
-                connection.close()
+            rows = connection.execute("SELECT key, value FROM memory_items ORDER BY key").fetchall()
+            return {row["key"]: json.loads(row["value"]) for row in rows}
 
     def version_history(self, key: str) -> List[Dict[str, Any]]:
         """Fetch version list of updates to a key (legacy interface)."""

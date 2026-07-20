@@ -57,43 +57,48 @@ class MemoryManager:
 
     def _ensure_schema(self) -> None:
         connection = self._connect()
-        try:
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS memory_items (
-                    key TEXT PRIMARY KEY,
-                    value TEXT NOT NULL,
-                    updated_at TEXT NOT NULL
-                )
-                """
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS memory_items (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS memory_versions (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    key TEXT NOT NULL,
-                    value TEXT NOT NULL,
-                    version INTEGER NOT NULL,
-                    created_at TEXT NOT NULL
-                )
-                """
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS memory_versions (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                key TEXT NOT NULL,
+                value TEXT NOT NULL,
+                version INTEGER NOT NULL,
+                created_at TEXT NOT NULL
             )
-            connection.execute(
-                """
-                CREATE TABLE IF NOT EXISTS vector_items (
-                    id TEXT PRIMARY KEY,
-                    text TEXT NOT NULL,
-                    vector TEXT NOT NULL,
-                    metadata TEXT NOT NULL
-                )
-                """
+            """
+        )
+        connection.execute(
+            """
+            CREATE TABLE IF NOT EXISTS vector_items (
+                id TEXT PRIMARY KEY,
+                text TEXT NOT NULL,
+                vector TEXT NOT NULL,
+                metadata TEXT NOT NULL
             )
-            connection.commit()
-        finally:
-            connection.close()
+            """
+        )
+        connection.commit()
 
     def _connect(self) -> sqlite3.Connection:
-        if self._db_path == ":memory:" and self._connection is not None:
+        """Return a cached SQLite connection, creating it on first call.
+
+        For both :memory: and file-based databases we keep a single long-lived
+        connection protected by _thread_lock.  Creating a new connection on
+        every call and closing it in a finally-block caused
+        ``InterfaceError: bad parameter or other API misuse`` when concurrent
+        asyncio tasks (e.g. asyncio.gather) raced to close/use the same handle.
+        """
+        if self._connection is not None:
             return self._connection
 
         if self._db_path == ":memory:":
@@ -103,13 +108,13 @@ class MemoryManager:
                 isolation_level=None,
                 factory=InMemoryConnection
             )
-            connection.row_factory = sqlite3.Row
-            self._connection = connection
         else:
             connection = sqlite3.connect(self._db_path, check_same_thread=False, isolation_level=None)
-            connection.row_factory = sqlite3.Row
             connection.execute("PRAGMA journal_mode=WAL")
+            connection.execute("PRAGMA busy_timeout=5000")
 
+        connection.row_factory = sqlite3.Row
+        self._connection = connection
         return connection
 
 
@@ -166,13 +171,10 @@ class MemoryManager:
         # Fallback to SQLite
         with self._thread_lock:
             connection = self._connect()
-            try:
-                row = connection.execute("SELECT value FROM memory_items WHERE key = ?", (storage_key,)).fetchone()
-                if row is None:
-                    return default
-                return json.loads(row["value"])
-            finally:
-                connection.close()
+            row = connection.execute("SELECT value FROM memory_items WHERE key = ?", (storage_key,)).fetchone()
+            if row is None:
+                return default
+            return json.loads(row["value"])
 
     def exists(self, namespace: Optional[str], key: str) -> bool:
         """Check if key exists in memory."""
@@ -186,11 +188,8 @@ class MemoryManager:
 
         with self._thread_lock:
             connection = self._connect()
-            try:
-                row = connection.execute("SELECT 1 FROM memory_items WHERE key = ?", (storage_key,)).fetchone()
-                return row is not None
-            finally:
-                connection.close()
+            row = connection.execute("SELECT 1 FROM memory_items WHERE key = ?", (storage_key,)).fetchone()
+            return row is not None
 
     def delete(self, namespace: Optional[str], key: str) -> None:
         """Delete key and its version history."""
@@ -205,12 +204,9 @@ class MemoryManager:
 
         with self._thread_lock:
             connection = self._connect()
-            try:
-                connection.execute("DELETE FROM memory_items WHERE key = ?", (storage_key,))
-                connection.execute("DELETE FROM memory_versions WHERE key = ?", (storage_key,))
-                connection.commit()
-            finally:
-                connection.close()
+            connection.execute("DELETE FROM memory_items WHERE key = ?", (storage_key,))
+            connection.execute("DELETE FROM memory_versions WHERE key = ?", (storage_key,))
+            connection.commit()
 
     def _persist_key(self, storage_key: str, serialized_value: str) -> None:
         """Persist serialized value to SQLite/Redis and create a new version."""
@@ -227,25 +223,22 @@ class MemoryManager:
         # Persist to SQLite (serialized by thread lock to prevent concurrent write races)
         with self._thread_lock:
             connection = self._connect()
-            try:
-                connection.execute(
-                    "INSERT INTO memory_items(key, value, updated_at) VALUES(?, ?, ?) "
-                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-                    (storage_key, serialized_value, now),
-                )
-                # Fetch next version integer
-                latest = connection.execute(
-                    "SELECT MAX(version) AS version FROM memory_versions WHERE key = ?", (storage_key,)
-                ).fetchone()
-                version = 1 if latest is None or latest["version"] is None else int(latest["version"]) + 1
+            connection.execute(
+                "INSERT INTO memory_items(key, value, updated_at) VALUES(?, ?, ?) "
+                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                (storage_key, serialized_value, now),
+            )
+            # Fetch next version integer
+            latest = connection.execute(
+                "SELECT MAX(version) AS version FROM memory_versions WHERE key = ?", (storage_key,)
+            ).fetchone()
+            version = 1 if latest is None or latest["version"] is None else int(latest["version"]) + 1
 
-                connection.execute(
-                    "INSERT INTO memory_versions(key, value, version, created_at) VALUES(?, ?, ?, ?)",
-                    (storage_key, serialized_value, version, now),
-                )
-                connection.commit()
-            finally:
-                connection.close()
+            connection.execute(
+                "INSERT INTO memory_versions(key, value, version, created_at) VALUES(?, ?, ?, ?)",
+                (storage_key, serialized_value, version, now),
+            )
+            connection.commit()
 
     # ---------------------------------------------------------------------------
     # Transactions
@@ -286,38 +279,31 @@ class MemoryManager:
         storage_key = self._compose_key(namespace, key)
         with self._thread_lock:
             connection = self._connect()
-            try:
-                rows = connection.execute(
-                    "SELECT value, version, created_at FROM memory_versions WHERE key = ? ORDER BY version ASC",
-                    (storage_key,),
-                ).fetchall()
-                return [
-                    {
-                        "value": json.loads(row["value"]),
-                        "version": row["version"],
-                        "created_at": row["created_at"],
-                    }
-                    for row in rows
-                ]
-            finally:
-                connection.close()
+            rows = connection.execute(
+                "SELECT value, version, created_at FROM memory_versions WHERE key = ? ORDER BY version ASC",
+                (storage_key,),
+            ).fetchall()
+            return [
+                {
+                    "value": json.loads(row["value"]),
+                    "version": row["version"],
+                    "created_at": row["created_at"],
+                }
+                for row in rows
+            ]
 
     def rollback_key_to_version(self, namespace: Optional[str], key: str, version: int) -> bool:
         """Rollback key value to a specific older version index."""
         storage_key = self._compose_key(namespace, key)
         with self._thread_lock:
             connection = self._connect()
-            try:
-                row = connection.execute(
-                    "SELECT value FROM memory_versions WHERE key = ? AND version = ?", (storage_key, version)
-                ).fetchone()
-                if not row:
-                    return False
-                
-                # Write back older version value
-                serialized = row["value"]
-            finally:
-                connection.close()
+            row = connection.execute(
+                "SELECT value FROM memory_versions WHERE key = ? AND version = ?", (storage_key, version)
+            ).fetchone()
+            if not row:
+                return False
+            # Write back older version value
+            serialized = row["value"]
         # Persist outside the lock to allow _persist_key's own lock acquisition
         self._persist_key(storage_key, serialized)
         return True
@@ -330,24 +316,18 @@ class MemoryManager:
         """Serialize complete database memory items to a JSON snapshot string."""
         with self._thread_lock:
             connection = self._connect()
-            try:
-                rows = connection.execute("SELECT key, value FROM memory_items").fetchall()
-                snapshot_dict = {row["key"]: json.loads(row["value"]) for row in rows}
-                return json.dumps(snapshot_dict)
-            finally:
-                connection.close()
+            rows = connection.execute("SELECT key, value FROM memory_items").fetchall()
+            snapshot_dict = {row["key"]: json.loads(row["value"]) for row in rows}
+            return json.dumps(snapshot_dict)
 
     def restore_snapshot(self, snapshot_data: str) -> None:
         """Restore all memory items from a serialized JSON snapshot string."""
         snapshot_dict = json.loads(snapshot_data)
         with self._thread_lock:
             connection = self._connect()
-            try:
-                connection.execute("DELETE FROM memory_items")
-                connection.execute("DELETE FROM memory_versions")
-                connection.commit()
-            finally:
-                connection.close()
+            connection.execute("DELETE FROM memory_items")
+            connection.execute("DELETE FROM memory_versions")
+            connection.commit()
 
         # Write each key back
         for storage_key, val in snapshot_dict.items():
@@ -393,15 +373,12 @@ class MemoryManager:
         
         with self._thread_lock:
             connection = self._connect()
-            try:
-                connection.execute(
-                    "INSERT INTO vector_items(id, text, vector, metadata) VALUES(?, ?, ?, ?)"
-                    "ON CONFLICT(id) DO UPDATE SET text = excluded.text, vector = excluded.vector, metadata = excluded.metadata",
-                    (vector_id, text, json.dumps(vector), json.dumps(metadata or {})),
-                )
-                connection.commit()
-            finally:
-                connection.close()
+            connection.execute(
+                "INSERT INTO vector_items(id, text, vector, metadata) VALUES(?, ?, ?, ?)"
+                "ON CONFLICT(id) DO UPDATE SET text = excluded.text, vector = excluded.vector, metadata = excluded.metadata",
+                (vector_id, text, json.dumps(vector), json.dumps(metadata or {})),
+            )
+            connection.commit()
         
         return vector_id
 
@@ -412,11 +389,8 @@ class MemoryManager:
 
         with self._thread_lock:
             connection = self._connect()
-            try:
-                rows = connection.execute("SELECT id, text, vector, metadata FROM vector_items").fetchall()
-                items = [(row["id"], row["text"], json.loads(row["vector"]), json.loads(row["metadata"])) for row in rows]
-            finally:
-                connection.close()
+            rows = connection.execute("SELECT id, text, vector, metadata FROM vector_items").fetchall()
+            items = [(row["id"], row["text"], json.loads(row["vector"]), json.loads(row["metadata"])) for row in rows]
 
         for item_id, item_text, item_vector, item_meta in items:
             similarity = self._cosine_similarity(query_vector, item_vector)

@@ -23,14 +23,20 @@ class CheckpointManager:
         self._ensure_schema()
 
     def _connect(self) -> sqlite3.Connection:
-        if self._db_path == ":memory:" and self._connection is not None:
+        """Return a cached SQLite connection, creating it on first call.
+
+        Caching prevents ``InterfaceError: bad parameter or other API misuse``
+        that occurred when concurrent asyncio tasks (asyncio.gather) raced to
+        close and reopen the same file-based connection.
+        """
+        if self._connection is not None:
             return self._connection
         connection = sqlite3.connect(self._db_path, check_same_thread=False, isolation_level=None)
         connection.row_factory = sqlite3.Row
         if self._db_path != ":memory:":
             connection.execute("PRAGMA journal_mode=WAL")
-        if self._db_path == ":memory:":
-            self._connection = connection
+            connection.execute("PRAGMA busy_timeout=5000")
+        self._connection = connection
         return connection
 
 
@@ -42,29 +48,25 @@ class CheckpointManager:
     def _ensure_schema(self) -> None:
         with self._lock:
             connection = self._connect()
-            try:
-                # If checkpoints table exists with the old schema (missing column 'id'), drop it
-                row = connection.execute("PRAGMA table_info(checkpoints)").fetchall()
-                if row:
-                    columns = {r["name"] for r in row}
-                    if "id" not in columns:
-                        connection.execute("DROP TABLE checkpoints")
+            # If checkpoints table exists with the old schema (missing column 'id'), drop it
+            row = connection.execute("PRAGMA table_info(checkpoints)").fetchall()
+            if row:
+                columns = {r["name"] for r in row}
+                if "id" not in columns:
+                    connection.execute("DROP TABLE checkpoints")
 
-                connection.execute(
-                    """
-                    CREATE TABLE IF NOT EXISTS checkpoints (
-                        id TEXT PRIMARY KEY,
-                        task_id TEXT NOT NULL,
-                        name TEXT NOT NULL,
-                        state TEXT NOT NULL,
-                        created_at TEXT NOT NULL
-                    )
-                    """
+            connection.execute(
+                """
+                CREATE TABLE IF NOT EXISTS checkpoints (
+                    id TEXT PRIMARY KEY,
+                    task_id TEXT NOT NULL,
+                    name TEXT NOT NULL,
+                    state TEXT NOT NULL,
+                    created_at TEXT NOT NULL
                 )
-                connection.commit()
-            finally:
-                if self._db_path != ":memory:":
-                    connection.close()
+                """
+            )
+            connection.commit()
 
     # Maximum total checkpoints to keep across all tasks — older ones are auto-pruned
     MAX_CHECKPOINTS_TOTAL = 500
@@ -88,27 +90,23 @@ class CheckpointManager:
             serialized = json.dumps(lean_state, sort_keys=True)
             now = self._now()
             connection = self._connect()
-            try:
-                connection.execute(
-                    "INSERT INTO checkpoints(id, task_id, name, state, created_at) VALUES(?, ?, ?, ?, ?)",
-                    (checkpoint_id, task_id, name, serialized, now),
+            connection.execute(
+                "INSERT INTO checkpoints(id, task_id, name, state, created_at) VALUES(?, ?, ?, ?, ?)",
+                (checkpoint_id, task_id, name, serialized, now),
+            )
+            # Auto-prune: keep only the most recent MAX_CHECKPOINTS_TOTAL entries
+            connection.execute(
+                """
+                DELETE FROM checkpoints
+                WHERE id NOT IN (
+                    SELECT id FROM checkpoints
+                    ORDER BY created_at DESC
+                    LIMIT ?
                 )
-                # Auto-prune: keep only the most recent MAX_CHECKPOINTS_TOTAL entries
-                connection.execute(
-                    """
-                    DELETE FROM checkpoints
-                    WHERE id NOT IN (
-                        SELECT id FROM checkpoints
-                        ORDER BY created_at DESC
-                        LIMIT ?
-                    )
-                    """,
-                    (self.MAX_CHECKPOINTS_TOTAL,),
-                )
-                connection.commit()
-            finally:
-                if self._db_path != ":memory:":
-                    connection.close()
+                """,
+                (self.MAX_CHECKPOINTS_TOTAL,),
+            )
+            connection.commit()
             return Checkpoint(
                 id=checkpoint_id,
                 task_id=task_id,
@@ -121,45 +119,37 @@ class CheckpointManager:
         """Retrieve a previously saved checkpoint."""
         with self._lock:
             connection = self._connect()
-            try:
-                row = connection.execute(
-                    "SELECT id, task_id, name, state, created_at FROM checkpoints WHERE id = ?",
-                    (checkpoint_id,),
-                ).fetchone()
-                if row is None:
-                    return None
-                return Checkpoint(
+            row = connection.execute(
+                "SELECT id, task_id, name, state, created_at FROM checkpoints WHERE id = ?",
+                (checkpoint_id,),
+            ).fetchone()
+            if row is None:
+                return None
+            return Checkpoint(
+                id=row["id"],
+                task_id=row["task_id"],
+                name=row["name"],
+                state=json.loads(row["state"]),
+                created_at=datetime.fromisoformat(row["created_at"]),
+            )
+
+    def list_checkpoints(self) -> list[Checkpoint]:
+        """List all checkpoints (full state deserialization — use list_checkpoint_ids() for fast listing)."""
+        with self._lock:
+            connection = self._connect()
+            rows = connection.execute(
+                "SELECT id, task_id, name, state, created_at FROM checkpoints ORDER BY created_at DESC"
+            ).fetchall()
+            return [
+                Checkpoint(
                     id=row["id"],
                     task_id=row["task_id"],
                     name=row["name"],
                     state=json.loads(row["state"]),
                     created_at=datetime.fromisoformat(row["created_at"]),
                 )
-            finally:
-                if self._db_path != ":memory:":
-                    connection.close()
-
-    def list_checkpoints(self) -> list[Checkpoint]:
-        """List all checkpoints (full state deserialization — use list_checkpoint_ids() for fast listing)."""
-        with self._lock:
-            connection = self._connect()
-            try:
-                rows = connection.execute(
-                    "SELECT id, task_id, name, state, created_at FROM checkpoints ORDER BY created_at DESC"
-                ).fetchall()
-                return [
-                    Checkpoint(
-                        id=row["id"],
-                        task_id=row["task_id"],
-                        name=row["name"],
-                        state=json.loads(row["state"]),
-                        created_at=datetime.fromisoformat(row["created_at"]),
-                    )
-                    for row in rows
-                ]
-            finally:
-                if self._db_path != ":memory:":
-                    connection.close()
+                for row in rows
+            ]
 
     def list_checkpoint_ids(self, limit: int = 100, with_meta: bool = False) -> list:
         """Fast metadata listing — never deserializes state blobs.
@@ -169,25 +159,21 @@ class CheckpointManager:
         """
         with self._lock:
             connection = self._connect()
-            try:
-                rows = connection.execute(
-                    "SELECT id, task_id, name, created_at FROM checkpoints ORDER BY created_at DESC LIMIT ?",
-                    (limit,),
-                ).fetchall()
-                if with_meta:
-                    return [
-                        {
-                            "id": row["id"],
-                            "task_id": row["task_id"],
-                            "name": row["name"],
-                            "created_at": row["created_at"],
-                        }
-                        for row in rows
-                    ]
-                return [row["id"] for row in rows]
-            finally:
-                if self._db_path != ":memory:":
-                    connection.close()
+            rows = connection.execute(
+                "SELECT id, task_id, name, created_at FROM checkpoints ORDER BY created_at DESC LIMIT ?",
+                (limit,),
+            ).fetchall()
+            if with_meta:
+                return [
+                    {
+                        "id": row["id"],
+                        "task_id": row["task_id"],
+                        "name": row["name"],
+                        "created_at": row["created_at"],
+                    }
+                    for row in rows
+                ]
+            return [row["id"] for row in rows]
 
     def restore(self, checkpoint_id: str) -> dict[str, Any]:
         """Restore state from a checkpoint."""
@@ -204,15 +190,11 @@ class CheckpointManager:
 
         with self._lock:
             connection = self._connect()
-            try:
-                connection.execute(
-                    "DELETE FROM checkpoints WHERE task_id = ? AND created_at > ?",
-                    (checkpoint.task_id, checkpoint.created_at.isoformat()),
-                )
-                connection.commit()
-            finally:
-                if self._db_path != ":memory:":
-                    connection.close()
+            connection.execute(
+                "DELETE FROM checkpoints WHERE task_id = ? AND created_at > ?",
+                (checkpoint.task_id, checkpoint.created_at.isoformat()),
+            )
+            connection.commit()
 
         return checkpoint.state
 
@@ -221,15 +203,11 @@ class CheckpointManager:
         """Return the full checkpoint history for a target."""
         with self._lock:
             connection = self._connect()
-            try:
-                rows = connection.execute(
-                    "SELECT id FROM checkpoints WHERE task_id = ? ORDER BY created_at ASC",
-                    (target_id,),
-                ).fetchall()
-                return [row["id"] for row in rows]
-            finally:
-                if self._db_path != ":memory:":
-                    connection.close()
+            rows = connection.execute(
+                "SELECT id FROM checkpoints WHERE task_id = ? ORDER BY created_at ASC",
+                (target_id,),
+            ).fetchall()
+            return [row["id"] for row in rows]
 
     def get_latest(self, target_id: str) -> Checkpoint | None:
         """Return the latest checkpoint for a target."""

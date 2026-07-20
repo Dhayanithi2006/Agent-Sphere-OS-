@@ -19,25 +19,30 @@ class MemoryAgent:
     def __init__(self, db_path: str = "checkpoints.sqlite") -> None:
         self.db_path = db_path
         self.qdrant = QdrantVectorClient()
+        # Keep a single long-lived connection (check_same_thread=False + threading.RLock
+        # protects concurrent access; creating per-call connections caused InterfaceError
+        # under asyncio.gather when multiple coroutines raced to close/reopen the same file).
+        self._conn = sqlite3.connect(self.db_path, check_same_thread=False, isolation_level=None)
+        self._conn.execute("PRAGMA journal_mode=WAL")
+        self._conn.execute("PRAGMA busy_timeout=5000")
+        self._lock = __import__("threading").RLock()
         self._init_sqlite()
 
     def _init_sqlite(self) -> None:
         """Initialize local SQLite store for long-term / archived memory fallbacks."""
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            """
-            CREATE TABLE IF NOT EXISTS user_memories (
-                id TEXT PRIMARY KEY,
-                tier TEXT,
-                content TEXT,
-                metadata TEXT,
-                timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+        with self._lock:
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS user_memories (
+                    id TEXT PRIMARY KEY,
+                    tier TEXT,
+                    content TEXT,
+                    metadata TEXT,
+                    timestamp DATETIME DEFAULT CURRENT_TIMESTAMP
+                )
+                """
             )
-            """
-        )
-        conn.commit()
-        conn.close()
+            self._conn.commit()
 
     def store_memory(self, content: str, tier: str = "long_term", metadata: dict | None = None) -> None:
         """Store a memory item in a specific ranking tier (short_term, long_term, archived, forgotten)."""
@@ -63,14 +68,12 @@ class MemoryAgent:
             )
 
         # Always persist locally to SQLite database
-        conn = sqlite3.connect(self.db_path)
-        cursor = conn.cursor()
-        cursor.execute(
-            "INSERT OR REPLACE INTO user_memories (id, tier, content, metadata) VALUES (?, ?, ?, ?)",
-            (doc_id, tier, content, json.dumps(metadata or {}))
-        )
-        conn.commit()
-        conn.close()
+        with self._lock:
+            self._conn.execute(
+                "INSERT OR REPLACE INTO user_memories (id, tier, content, metadata) VALUES (?, ?, ?, ?)",
+                (doc_id, tier, content, json.dumps(metadata or {}))
+            )
+            self._conn.commit()
 
     def recall_memories(self, query: str, limit: int = 3) -> List[Dict[str, Any]]:
         """Recall relevant memories matching the query semantic meaning."""
@@ -102,11 +105,9 @@ class MemoryAgent:
         
         # If Qdrant returns nothing, query SQLite as local fallback
         if not recalled:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            cursor.execute("SELECT id, tier, content, metadata FROM user_memories")
-            rows = cursor.fetchall()
-            conn.close()
+            with self._lock:
+                cursor = self._conn.execute("SELECT id, tier, content, metadata FROM user_memories")
+                rows = cursor.fetchall()
             
             for row in rows:
                 content = row[2]
