@@ -125,21 +125,26 @@ class MemoryManager:
             obj._db_path = ":memory:"
             obj._ensure_schema()
 
-        By holding the thread lock throughout, we guarantee no concurrent
-        coroutine observes a partially-reset state.
+        By holding _thread_lock (an RLock) throughout the entire swap we
+        guarantee no concurrent coroutine observes a partially-reset state.
+        _ensure_schema() re-acquires the same RLock internally — that is safe
+        because RLock allows the same thread to acquire it multiple times.
         """
         with self._thread_lock:
             old_conn = self._connection
             self._connection = None
             self._db_path = db_path
-            # Re-initialise schema on the new connection
+            # Re-initialise schema on the new connection (safe: RLock is re-entrant)
             self._ensure_schema()
-            # Close the old connection only AFTER the new one is ready and cached
+            # Close the old connection AFTER the new one is ready.
+            # Call the base-class close() directly to bypass InMemoryConnection.close()
+            # which is a no-op, so the underlying file handle is actually released.
             if old_conn is not None:
                 try:
-                    old_conn.close.__wrapped__(old_conn)  # bypass InMemoryConnection no-op
+                    sqlite3.Connection.close(old_conn)
                 except Exception:
                     pass
+
 
 
 
