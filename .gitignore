@@ -35,4 +35,5 @@ check_state.py
 
 # Pytest cache
 .pytest_cache/
-tests/__pycache__/
+tests/__pycache__/
+events.jsonl
