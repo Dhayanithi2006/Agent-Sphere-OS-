@@ -5,19 +5,19 @@ import { usePathname } from 'next/navigation';
 import { useState } from 'react';
 
 const NAV = [
-  { href: '/',            label: 'Home',        icon: '⬡', desc: 'Command Center' },
-  { href: '/dashboard',   label: 'Dashboard',   icon: '◈', desc: 'Mission Control' },
-  { href: '/processes',   label: 'Processes',   icon: '▣', desc: 'Task Manager' },
-  { href: '/agents',      label: 'Agents',      icon: '◉', desc: 'Agent Fleet' },
-  { href: '/memory',      label: 'Memory',      icon: '⬡', desc: 'RAM Explorer' },
-  { href: '/scheduler',   label: 'Scheduler',   icon: '≡', desc: 'CPU Scheduler' },
-  { href: '/execution',   label: 'Execution',   icon: '▷', desc: 'Live DAG' },
-  { href: '/checkpoints', label: 'Checkpoints', icon: '◎', desc: 'System Restore' },
-  { href: '/recovery',    label: 'Recovery',    icon: '↺', desc: 'Recovery Engine' },
-  { href: '/marketplace', label: 'Marketplace', icon: '⊞', desc: 'Plugin Store' },
-  { href: '/showrunner',  label: 'Showrunner',  icon: '◈', desc: 'Creative Studio' },
-  { href: '/analytics',   label: 'Analytics',   icon: '◬', desc: 'Insights' },
-  { href: '/settings',    label: 'Settings',    icon: '⚙', desc: 'System Config' },
+  { href: '/',            label: 'Home',        icon: '🏠', desc: 'Command Center',  color: '#8B5CF6' },
+  { href: '/dashboard',   label: 'Dashboard',   icon: '📊', desc: 'Mission Control', color: '#F472B6' },
+  { href: '/processes',   label: 'Processes',   icon: '⚙️', desc: 'Task Manager',    color: '#22D3EE' },
+  { href: '/agents',      label: 'Agents',      icon: '🤖', desc: 'Agent Fleet',     color: '#34D399' },
+  { href: '/memory',      label: 'Memory',      icon: '💾', desc: 'RAM Explorer',    color: '#FBBF24' },
+  { href: '/scheduler',   label: 'Scheduler',   icon: '🕐', desc: 'CPU Scheduler',   color: '#8B5CF6' },
+  { href: '/execution',   label: 'Execution',   icon: '▶',  desc: 'Live DAG',        color: '#22D3EE' },
+  { href: '/checkpoints', label: 'Checkpoints', icon: '💠', desc: 'System Restore',  color: '#F472B6' },
+  { href: '/recovery',    label: 'Recovery',    icon: '🔄', desc: 'Recovery Engine', color: '#34D399' },
+  { href: '/marketplace', label: 'Marketplace', icon: '🛒', desc: 'Plugin Store',    color: '#FBBF24' },
+  { href: '/showrunner',  label: 'Showrunner',  icon: '🎬', desc: 'Creative Studio', color: '#F472B6' },
+  { href: '/analytics',   label: 'Analytics',   icon: '📈', desc: 'Insights',        color: '#22D3EE' },
+  { href: '/settings',    label: 'Settings',    icon: '⚙',  desc: 'System Config',   color: '#8B5CF6' },
 ];
 
 export default function Sidebar() {
@@ -27,11 +27,12 @@ export default function Sidebar() {
   return (
     <aside
       style={{
-        width: collapsed ? '60px' : '220px',
-        transition: 'width 0.25s cubic-bezier(0.4,0,0.2,1)',
-        background: 'rgba(8,8,24,0.95)',
-        backdropFilter: 'blur(20px)',
-        borderRight: '1px solid rgba(255,255,255,0.06)',
+        width: collapsed ? 64 : 228,
+        transition: 'width 0.3s cubic-bezier(0.4,0,0.2,1)',
+        background: 'rgba(8,8,16,0.92)',
+        backdropFilter: 'blur(28px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(28px) saturate(180%)',
+        borderRight: '1px solid rgba(139,92,246,0.12)',
         display: 'flex',
         flexDirection: 'column',
         height: '100vh',
@@ -41,125 +42,227 @@ export default function Sidebar() {
         flexShrink: 0,
       }}
     >
-      {/* Logo */}
+      {/* ── Logo ─────────────────────────────── */}
       <div
         style={{
           padding: collapsed ? '20px 0' : '20px 16px',
-          borderBottom: '1px solid rgba(255,255,255,0.06)',
+          borderBottom: '1px solid rgba(139,92,246,0.1)',
           display: 'flex',
           alignItems: 'center',
-          gap: '10px',
+          justifyContent: collapsed ? 'center' : 'flex-start',
+          gap: 12,
           overflow: 'hidden',
         }}
       >
+        {/* Logo mark */}
         <div
           style={{
-            width: 32,
-            height: 32,
-            borderRadius: 8,
-            background: 'linear-gradient(135deg, #00D4FF, #7B2FFF)',
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            background: 'linear-gradient(135deg, #8B5CF6, #F472B6)',
             display: 'flex',
             alignItems: 'center',
             justifyContent: 'center',
-            fontSize: 16,
+            fontSize: 18,
             flexShrink: 0,
-            boxShadow: '0 0 16px rgba(0,212,255,0.4)',
+            boxShadow: '0 0 20px rgba(139,92,246,0.5), 0 0 40px rgba(244,114,182,0.2)',
+            position: 'relative',
           }}
         >
-          ⬡
+          <span style={{ filter: 'brightness(2)' }}>⬡</span>
+          {/* Pulse ring */}
+          <div
+            style={{
+              position: 'absolute',
+              inset: -3,
+              borderRadius: 13,
+              border: '1px solid rgba(139,92,246,0.4)',
+              animation: 'logo-ring 3s ease-in-out infinite',
+            }}
+          />
         </div>
+
         {!collapsed && (
-          <div>
+          <div style={{ overflow: 'hidden' }}>
             <div
               style={{
-                fontFamily: 'Space Grotesk, sans-serif',
-                fontWeight: 700,
-                fontSize: 13,
-                color: '#F0F4FF',
+                fontFamily: 'Outfit, sans-serif',
+                fontWeight: 800,
+                fontSize: 14,
+                letterSpacing: '-0.02em',
+                background: 'linear-gradient(135deg, #F1F0FF, #C4B5FD)',
+                WebkitBackgroundClip: 'text',
+                WebkitTextFillColor: 'transparent',
+                backgroundClip: 'text',
                 whiteSpace: 'nowrap',
               }}
             >
               AgentSphere OS
             </div>
-            <div style={{ fontSize: 10, color: '#4A5280', whiteSpace: 'nowrap' }}>
-              v2.0 · Kernel Active
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 5,
+                marginTop: 2,
+              }}
+            >
+              <span
+                style={{
+                  width: 5,
+                  height: 5,
+                  borderRadius: '50%',
+                  background: '#34D399',
+                  boxShadow: '0 0 6px #34D399',
+                  display: 'inline-block',
+                  animation: 'pulse-cyan 2s infinite',
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 10,
+                  color: '#5C5880',
+                  fontFamily: 'JetBrains Mono, monospace',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                Kernel Active
+              </span>
             </div>
           </div>
         )}
       </div>
 
-      {/* Nav */}
-      <nav style={{ flex: 1, padding: '8px 0', overflowY: 'auto', overflowX: 'hidden' }}>
-        {NAV.map(({ href, label, icon, desc }) => {
+      {/* ── Navigation ───────────────────────── */}
+      <nav style={{ flex: 1, padding: '10px 0', overflowY: 'auto', overflowX: 'hidden' }}>
+        {NAV.map(({ href, label, icon, desc, color }) => {
           const active = pathname === href;
           return (
             <Link
               key={href}
               href={href}
+              title={collapsed ? label : undefined}
               style={{
                 display: 'flex',
                 alignItems: 'center',
                 gap: 10,
-                padding: collapsed ? '10px 0' : '9px 16px',
-                justifyContent: collapsed ? 'center' : 'flex-start',
+                padding: collapsed ? '10px 0' : '9px 12px',
                 margin: '1px 6px',
-                borderRadius: 8,
+                borderRadius: 10,
                 textDecoration: 'none',
-                background: active ? 'rgba(0,212,255,0.08)' : 'transparent',
+                justifyContent: collapsed ? 'center' : 'flex-start',
+                background: active
+                  ? `rgba(${hexToRgb(color)},0.12)`
+                  : 'transparent',
                 border: active
-                  ? '1px solid rgba(0,212,255,0.2)'
+                  ? `1px solid rgba(${hexToRgb(color)},0.25)`
                   : '1px solid transparent',
-                transition: 'all 0.15s ease',
+                position: 'relative',
                 overflow: 'hidden',
+                transition: 'all 0.2s cubic-bezier(0.4,0,0.2,1)',
               }}
-              title={collapsed ? label : undefined}
             >
+              {/* Active accent line */}
+              {active && (
+                <div
+                  style={{
+                    position: 'absolute',
+                    left: 0,
+                    top: '20%',
+                    bottom: '20%',
+                    width: 2,
+                    background: `linear-gradient(${color}, ${color}88)`,
+                    borderRadius: '0 2px 2px 0',
+                    boxShadow: `0 0 8px ${color}`,
+                  }}
+                />
+              )}
+
+              {/* Icon */}
               <span
                 style={{
-                  fontSize: 15,
-                  color: active ? '#00D4FF' : 'rgba(255,255,255,0.5)',
+                  fontSize: collapsed ? 18 : 16,
                   flexShrink: 0,
-                  filter: active ? 'drop-shadow(0 0 4px #00D4FF)' : 'none',
+                  filter: active ? `drop-shadow(0 0 6px ${color})` : 'grayscale(0.3) opacity(0.7)',
+                  transition: 'filter 0.2s',
                 }}
               >
                 {icon}
               </span>
+
+              {/* Label + desc */}
               {!collapsed && (
-                <span
-                  style={{
-                    fontSize: 13,
-                    fontWeight: active ? 600 : 400,
-                    color: active ? '#00D4FF' : '#8892B0',
-                    whiteSpace: 'nowrap',
-                  }}
-                >
-                  {label}
-                </span>
+                <div style={{ overflow: 'hidden' }}>
+                  <div
+                    style={{
+                      fontSize: 13,
+                      fontWeight: active ? 600 : 400,
+                      color: active ? color : '#A8A5C6',
+                      fontFamily: 'Outfit, sans-serif',
+                      whiteSpace: 'nowrap',
+                      transition: 'color 0.2s',
+                    }}
+                  >
+                    {label}
+                  </div>
+                </div>
               )}
             </Link>
           );
         })}
       </nav>
 
-      {/* Collapse toggle */}
-      <div style={{ padding: '12px 8px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
+      {/* ── Collapse toggle ───────────────────── */}
+      <div
+        style={{
+          padding: '10px 8px',
+          borderTop: '1px solid rgba(139,92,246,0.1)',
+        }}
+      >
         <button
           onClick={() => setCollapsed(!collapsed)}
           style={{
             width: '100%',
             padding: '8px',
             borderRadius: 8,
-            background: 'rgba(255,255,255,0.04)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            color: '#4A5280',
+            background: 'rgba(139,92,246,0.07)',
+            border: '1px solid rgba(139,92,246,0.15)',
+            color: '#8B5CF6',
             cursor: 'pointer',
             fontSize: 13,
-            transition: 'all 0.15s ease',
+            fontFamily: 'Outfit, sans-serif',
+            fontWeight: 500,
+            transition: 'all 0.2s ease',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
           }}
         >
-          {collapsed ? '→' : '← Collapse'}
+          {collapsed ? '→' : (
+            <>
+              <span>←</span>
+              <span>Collapse</span>
+            </>
+          )}
         </button>
       </div>
+
+      <style>{`
+        @keyframes logo-ring {
+          0%, 100% { opacity: 0.4; transform: scale(1); }
+          50%       { opacity: 0.8; transform: scale(1.05); }
+        }
+      `}</style>
     </aside>
   );
+}
+
+/** Convert hex color to "r,g,b" string for rgba() usage */
+function hexToRgb(hex: string): string {
+  const result = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+  return result
+    ? `${parseInt(result[1], 16)},${parseInt(result[2], 16)},${parseInt(result[3], 16)}`
+    : '139,92,246';
 }

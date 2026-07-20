@@ -23,10 +23,18 @@ interface LiveItem {
   state: string;
 }
 
-const STATE_COLOR: Record<string, string> = {
-  running: '#00D4FF', stopped: '#00FF9D', completed: '#00FF9D',
-  failed: '#FF3D71', created: '#7B2FFF', pending: '#FFB800',
-};
+const STATE = {
+  running:   { color: '#22D3EE', label: 'Running' },
+  completed: { color: '#34D399', label: 'Done'    },
+  stopped:   { color: '#34D399', label: 'Done'    },
+  failed:    { color: '#F87171', label: 'Failed'  },
+  pending:   { color: '#FBBF24', label: 'Pending' },
+  created:   { color: '#8B5CF6', label: 'Created' },
+} as Record<string, { color: string; label: string }>;
+
+function stateOf(s: string) {
+  return STATE[s?.toLowerCase()] ?? { color: '#5C5880', label: s || '—' };
+}
 
 export default function DashboardPage() {
   const [supervisor, setSupervisor] = useState<any>({});
@@ -52,7 +60,6 @@ export default function DashboardPage() {
         const procs: Process[] = Array.isArray(ps) ? ps : [];
         setProcesses(procs);
 
-        // Build live feed from new/changed processes
         const now = new Date().toLocaleTimeString('en-US', { hour12: false });
         const newItems: LiveItem[] = [];
         procs.forEach(p => {
@@ -74,135 +81,181 @@ export default function DashboardPage() {
 
   useEffect(() => { activityEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [activityFeed]);
 
-  const running = processes.filter(p => p.current_state === 'running').length;
-  const completed = processes.filter(p => ['completed', 'stopped'].includes(p.current_state || '')).length;
-  const failed = processes.filter(p => p.current_state === 'failed').length;
+  const running   = processes.filter(p => p.current_state === 'running').length;
+  const completed = processes.filter(p => ['completed','stopped'].includes(p.current_state || '')).length;
+  const failed    = processes.filter(p => p.current_state === 'failed').length;
 
   const kpis = [
-    { label: 'Agents',     value: supervisor.agent_count ?? '—', color: '#00D4FF', sub: 'registered' },
-    { label: 'Total Tasks',value: supervisor.task_count   ?? '—', color: '#7B2FFF', sub: 'all time' },
-    { label: 'Running',    value: running,                        color: '#00D4FF', sub: 'active now', pulse: running > 0 },
-    { label: 'Completed',  value: completed,                      color: '#00FF9D', sub: 'finished' },
-    { label: 'Failed',     value: failed,                         color: '#FF3D71', sub: 'need recovery' },
-    { label: 'Cost',       value: metrics.total_cost != null ? `$${Number(metrics.total_cost).toFixed(3)}` : '$0.000', color: '#FFB800', sub: 'API spend' },
+    { label: 'Agents',     value: supervisor.agent_count ?? '—', accent: '#8B5CF6', cls: 'violet', sub: 'registered',   icon: '🤖' },
+    { label: 'Total Tasks',value: supervisor.task_count  ?? '—', accent: '#F472B6', cls: 'rose',   sub: 'all time',     icon: '📋' },
+    { label: 'Running',    value: running,                        accent: '#22D3EE', cls: 'cyan',   sub: 'active now',   icon: '▶', pulse: running > 0 },
+    { label: 'Completed',  value: completed,                      accent: '#34D399', cls: 'emerald',sub: 'finished',     icon: '✔' },
+    { label: 'Failed',     value: failed,                         accent: '#F87171', cls: 'red',    sub: 'need recovery',icon: '✖' },
+    { label: 'API Spend',  value: metrics.total_cost != null ? `$${Number(metrics.total_cost).toFixed(3)}` : '$0.000', accent: '#FBBF24', cls: 'amber', sub: 'tokens used', icon: '💰' },
   ];
 
   return (
     <AppShell>
-      <div style={{ padding: '24px 28px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-        {/* Header */}
+      <div style={{ padding: '28px 32px', display: 'flex', flexDirection: 'column', gap: 20 }}>
+
+        {/* ── Page header ──────────────────────── */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
           <div>
-            <h1 style={{ fontFamily: 'Space Grotesk, sans-serif', fontSize: 26, fontWeight: 700, color: '#F0F4FF', margin: 0, marginBottom: 4 }}>Mission Control</h1>
-            <p style={{ color: '#4A5280', fontSize: 13, margin: 0 }}>Real-time system overview · auto-refreshing every 2s</p>
+            <h1 className="page-title" style={{ marginBottom: 6 }}>
+              <span className="gradient-text">Mission Control</span>
+            </h1>
+            <p style={{ color: 'var(--text-muted)', fontSize: 13, fontFamily: 'Sora, sans-serif' }}>
+              Real-time system overview · auto-refreshing every 2s
+            </p>
           </div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '6px 14px', background: running > 0 ? 'rgba(0,212,255,0.08)' : 'rgba(255,255,255,0.03)', border: `1px solid ${running > 0 ? 'rgba(0,212,255,0.2)' : 'rgba(255,255,255,0.07)'}`, borderRadius: 100 }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: running > 0 ? '#00D4FF' : '#00FF9D', boxShadow: running > 0 ? '0 0 6px #00D4FF' : 'none', display: 'inline-block' }} />
-            <span style={{ fontSize: 11, color: running > 0 ? '#00D4FF' : '#4A5280', fontFamily: 'JetBrains Mono' }}>
+
+          {/* Live indicator */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '7px 16px',
+            background: running > 0 ? 'rgba(34,211,238,0.08)' : 'rgba(52,211,153,0.06)',
+            border: `1px solid ${running > 0 ? 'rgba(34,211,238,0.25)' : 'rgba(52,211,153,0.2)'}`,
+            borderRadius: 100,
+          }}>
+            <span className={`status-dot ${running > 0 ? 'running' : 'completed'}`} />
+            <span style={{
+              fontSize: 11,
+              fontFamily: 'JetBrains Mono, monospace',
+              color: running > 0 ? '#22D3EE' : '#34D399',
+              letterSpacing: '0.08em',
+            }}>
               {running > 0 ? `${running} RUNNING` : 'IDLE'}
             </span>
           </div>
         </div>
 
-        {/* KPIs */}
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 12 }}>
-          {kpis.map(({ label, value, color, sub, pulse }) => (
-            <div key={label} style={{ borderRadius: 14, padding: '16px 18px', border: `1px solid ${pulse ? `${color}25` : 'rgba(255,255,255,0.07)'}`, background: pulse ? `${color}06` : 'rgba(255,255,255,0.02)', transition: 'all 0.3s' }}>
-              <div style={{ fontSize: 10, color: '#4A5280', textTransform: 'uppercase', letterSpacing: '0.1em', marginBottom: 6 }}>{label}</div>
-              <div style={{ fontSize: 26, fontFamily: 'Space Grotesk', fontWeight: 700, color, marginBottom: 2 }}>{value}</div>
-              <div style={{ fontSize: 10, color: '#4A5280' }}>{sub}</div>
+        {/* ── KPI cards ────────────────────────── */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: 14 }}>
+          {kpis.map(({ label, value, accent, sub, icon, pulse }) => (
+            <div
+              key={label}
+              className={`metric-card ${pulse ? 'violet' : ''} fade-up`}
+              style={{
+                borderColor: pulse ? `rgba(34,211,238,0.25)` : undefined,
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 12 }}>
+                <span style={{ fontSize: 9, color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.1em', fontFamily: 'Outfit, sans-serif', fontWeight: 600 }}>
+                  {label}
+                </span>
+                <span style={{ fontSize: 18, filter: pulse ? 'drop-shadow(0 0 6px ' + accent + ')' : 'none' }}>{icon}</span>
+              </div>
+              <div style={{
+                fontSize: 30,
+                fontFamily: 'Outfit, sans-serif',
+                fontWeight: 800,
+                color: accent,
+                letterSpacing: '-0.03em',
+                marginBottom: 4,
+                textShadow: pulse ? `0 0 20px ${accent}66` : 'none',
+              }}>
+                {value}
+              </div>
+              <div style={{ fontSize: 11, color: 'var(--text-subtle)', fontFamily: 'Sora, sans-serif' }}>{sub}</div>
             </div>
           ))}
         </div>
 
-        {/* Main 2-column layout */}
+        {/* ── Running agent pills ───────────────── */}
+        {running > 0 && (
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {processes.filter(p => p.current_state === 'running').map(p => (
+              <div key={p.pid} style={{
+                display: 'flex', alignItems: 'center', gap: 8,
+                padding: '6px 14px',
+                borderRadius: 100,
+                background: 'rgba(34,211,238,0.08)',
+                border: '1px solid rgba(34,211,238,0.22)',
+              }}>
+                <span className="status-dot running" />
+                <span style={{ fontSize: 12, color: '#22D3EE', fontFamily: 'Outfit, sans-serif', fontWeight: 600 }}>{p.agent}</span>
+                <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>·</span>
+                <span style={{ fontSize: 11, color: 'var(--text-secondary)', maxWidth: 220, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.current_task}</span>
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* ── 2-col layout ─────────────────────── */}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 360px', gap: 16 }}>
 
-          {/* Left: Live processes */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          {/* Processes table */}
+          <div className="glass-card" style={{ overflow: 'hidden' }}>
+            <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>⚙ Processes</span>
+              <span className="badge badge-violet">{processes.length} total</span>
+            </div>
 
-            {/* Running agents highlight */}
-            {running > 0 && (
-              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                {processes.filter(p => p.current_state === 'running').map(p => (
-                  <div key={p.pid} style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 14px', borderRadius: 100, background: 'rgba(0,212,255,0.08)', border: '1px solid rgba(0,212,255,0.25)' }}>
-                    <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#00D4FF', boxShadow: '0 0 6px #00D4FF', display: 'inline-block' }} />
-                    <span style={{ fontSize: 12, color: '#00D4FF', fontFamily: 'JetBrains Mono' }}>{p.agent}</span>
-                    <span style={{ fontSize: 11, color: '#4A5280' }}>·</span>
-                    <span style={{ fontSize: 11, color: '#8892B0', maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.current_task}</span>
-                  </div>
-                ))}
-              </div>
-            )}
+            {/* Table head */}
+            <div style={{ display: 'grid', gridTemplateColumns: '100px 110px 1fr 90px', padding: '8px 20px', borderBottom: '1px solid rgba(255,255,255,0.04)', gap: 12 }}>
+              {['PID', 'AGENT', 'TASK', 'STATUS'].map(h => (
+                <span key={h} className="section-title" style={{ fontSize: 10 }}>{h}</span>
+              ))}
+            </div>
 
-            {/* Process table */}
-            <div style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.01)', overflow: 'hidden' }}>
-              <div style={{ padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F4FF' }}>Processes</span>
-                <span style={{ fontSize: 11, color: '#4A5280' }}>{processes.length} total</span>
-              </div>
-
-              {/* Table header */}
-              <div style={{ display: 'grid', gridTemplateColumns: '90px 110px 1fr 90px', padding: '8px 18px', borderBottom: '1px solid rgba(255,255,255,0.05)', gap: 12 }}>
-                {['PID', 'AGENT', 'TASK', 'STATUS'].map(h => (
-                  <span key={h} style={{ fontSize: 9, color: '#2A3060', textTransform: 'uppercase', letterSpacing: '0.12em', fontWeight: 600 }}>{h}</span>
-                ))}
-              </div>
-
-              <div style={{ maxHeight: 340, overflowY: 'auto' }}>
-                {processes.slice(0, 50).map((p, i) => {
-                  const state = (p.current_state || 'pending').toLowerCase();
-                  const color = STATE_COLOR[state] || '#4A5280';
-                  return (
-                    <div key={p.pid || i} style={{ display: 'grid', gridTemplateColumns: '90px 110px 1fr 90px', padding: '9px 18px', borderBottom: '1px solid rgba(255,255,255,0.03)', gap: 12, alignItems: 'center', transition: 'background 0.1s' }}
-                      onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)') }
-                      onMouseLeave={e => (e.currentTarget.style.background = 'transparent') }>
-                      <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono', color: '#00D4FF' }}>{p.pid}</span>
-                      <span style={{ fontSize: 12, color: '#8892B0' }}>{p.agent}</span>
-                      <span style={{ fontSize: 11, color: '#F0F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{p.current_task || '—'}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
-                        {state === 'running' && <span style={{ width: 5, height: 5, borderRadius: '50%', background: color, boxShadow: `0 0 4px ${color}`, display: 'inline-block' }} />}
-                        <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono', color, textTransform: 'uppercase' }}>
-                          {state === 'stopped' ? 'done' : state}
-                        </span>
-                      </div>
+            <div style={{ maxHeight: 360, overflowY: 'auto' }}>
+              {processes.slice(0, 50).map((p, i) => {
+                const s = stateOf(p.current_state);
+                return (
+                  <div
+                    key={p.pid || i}
+                    style={{
+                      display: 'grid', gridTemplateColumns: '100px 110px 1fr 90px',
+                      padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.03)',
+                      gap: 12, alignItems: 'center', transition: 'background 0.15s',
+                    }}
+                    onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.04)')}
+                    onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span style={{ fontSize: 11, fontFamily: 'JetBrains Mono, monospace', color: '#A78BFA' }}>{p.pid}</span>
+                    <span style={{ fontSize: 12, color: 'var(--text-secondary)', fontFamily: 'Outfit, sans-serif' }}>{p.agent}</span>
+                    <span style={{ fontSize: 11, color: 'var(--text-primary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontFamily: 'Sora, sans-serif' }}>{p.current_task || '—'}</span>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                      <span className={`status-dot ${p.current_state || 'idle'}`} />
+                      <span style={{ fontSize: 10, fontFamily: 'JetBrains Mono, monospace', color: s.color, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{s.label}</span>
                     </div>
-                  );
-                })}
-                {processes.length === 0 && (
-                  <div style={{ padding: 40, textAlign: 'center', color: '#4A5280', fontSize: 13 }}>No processes yet</div>
-                )}
-              </div>
+                  </div>
+                );
+              })}
+              {processes.length === 0 && (
+                <div style={{ padding: 48, textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13, fontFamily: 'Sora, sans-serif' }}>
+                  No processes yet
+                </div>
+              )}
             </div>
           </div>
 
-          {/* Right: Live activity feed */}
-          <div style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.01)', display: 'flex', flexDirection: 'column', overflow: 'hidden', maxHeight: 480 }}>
-            <div style={{ padding: '12px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
-              <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F4FF' }}>Live Activity</span>
+          {/* Live activity feed */}
+          <div className="glass-card" style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden', maxHeight: 480 }}>
+            <div style={{ padding: '14px 18px', borderBottom: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexShrink: 0 }}>
+              <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>⚡ Live Feed</span>
               <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-                <span style={{ width: 5, height: 5, borderRadius: '50%', background: '#00FF9D', boxShadow: '0 0 5px #00FF9D', display: 'inline-block' }} />
-                <span style={{ fontSize: 10, color: '#4A5280', fontFamily: 'JetBrains Mono' }}>LIVE</span>
+                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#34D399', boxShadow: '0 0 6px #34D399', display: 'inline-block', animation: 'pulse-cyan 2s infinite' }} />
+                <span style={{ fontSize: 10, color: 'var(--text-muted)', fontFamily: 'JetBrains Mono, monospace', letterSpacing: '0.08em' }}>LIVE</span>
               </div>
             </div>
-
             <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
               {activityFeed.length === 0 && (
-                <div style={{ padding: 40, textAlign: 'center', color: '#4A5280', fontSize: 13 }}>Waiting for activity...</div>
+                <div style={{ padding: 40, textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13, fontFamily: 'Sora, sans-serif' }}>
+                  Waiting for activity...
+                </div>
               )}
               {activityFeed.map((item, i) => {
-                const color = STATE_COLOR[item.state] || '#4A5280';
+                const s = stateOf(item.state);
                 return (
-                  <div key={i} style={{ padding: '7px 14px', borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', flexDirection: 'column', gap: 2 }}>
+                  <div key={i} className="feed-row" style={{ padding: '8px 16px', borderBottom: '1px solid rgba(255,255,255,0.03)', display: 'flex', flexDirection: 'column', gap: 3 }}>
                     <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                      <span style={{ fontSize: 9, color: '#2A3060', fontFamily: 'JetBrains Mono', flexShrink: 0 }}>{item.time}</span>
-                      <span style={{ fontSize: 10, color: '#00D4FF', fontFamily: 'JetBrains Mono', flexShrink: 0 }}>{item.pid}</span>
-                      <span style={{ fontSize: 10, color, fontFamily: 'JetBrains Mono', textTransform: 'uppercase', flexShrink: 0 }}>
-                        {item.state === 'stopped' ? 'DONE' : item.state.toUpperCase()}
-                      </span>
+                      <span style={{ fontSize: 9, color: 'var(--text-subtle)', fontFamily: 'JetBrains Mono, monospace' }}>{item.time}</span>
+                      <span style={{ fontSize: 10, color: '#A78BFA', fontFamily: 'JetBrains Mono, monospace' }}>{item.pid}</span>
+                      <span style={{ fontSize: 10, color: s.color, fontFamily: 'JetBrains Mono, monospace', textTransform: 'uppercase', fontWeight: 600 }}>{s.label}</span>
                     </div>
-                    <div style={{ fontSize: 11, color: '#8892B0', paddingLeft: 0, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <span style={{ color: '#4A5280' }}>{item.agent}: </span>{item.task}
+                    <div style={{ fontSize: 11, color: 'var(--text-secondary)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      <span style={{ color: 'var(--text-muted)' }}>{item.agent}: </span>{item.task}
                     </div>
                   </div>
                 );
@@ -212,48 +265,48 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        {/* Task History Timeline */}
-        <div style={{ borderRadius: 14, border: '1px solid rgba(255,255,255,0.07)', background: 'rgba(255,255,255,0.01)', overflow: 'hidden' }}>
-          <div style={{ padding: '12px 18px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: 13, fontWeight: 600, color: '#F0F4FF' }}>🕐 Task History</span>
-            <span style={{ fontSize: 11, color: '#4A5280' }}>{taskHistory.length} recent tasks</span>
+        {/* ── Task history ──────────────────────── */}
+        <div className="glass-card" style={{ overflow: 'hidden' }}>
+          <div style={{ padding: '14px 20px', borderBottom: '1px solid var(--border-soft)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontFamily: 'Outfit, sans-serif', fontWeight: 700, fontSize: 14, color: 'var(--text-primary)' }}>🕐 Task History</span>
+            <span className="badge badge-violet">{taskHistory.length} recent</span>
           </div>
-          <div style={{ maxHeight: 220, overflowY: 'auto' }}>
+          <div style={{ maxHeight: 240, overflowY: 'auto' }}>
             {taskHistory.length === 0 && (
-              <div style={{ padding: 30, textAlign: 'center', color: '#4A5280', fontSize: 13 }}>No tasks yet — run a build from Home</div>
+              <div style={{ padding: 36, textAlign: 'center', color: 'var(--text-subtle)', fontSize: 13, fontFamily: 'Sora, sans-serif' }}>
+                No tasks yet — run a workflow from Home
+              </div>
             )}
             {taskHistory.map((t: any, i: number) => {
-              const status = (t.status || '').toLowerCase();
-              const statusColor = status === 'completed' ? '#00FF9D' : status === 'failed' ? '#FF3D71' : status === 'running' ? '#00D4FF' : '#FFB800';
+              const s = stateOf(t.status);
               return (
-                <div key={t.task_id || i} style={{
-                  display: 'grid', gridTemplateColumns: '12px 1fr auto 80px',
-                  padding: '9px 18px', borderBottom: '1px solid rgba(255,255,255,0.03)',
-                  gap: 12, alignItems: 'center',
-                }}
-                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(255,255,255,0.02)')}
+                <div
+                  key={t.task_id || i}
+                  style={{ display: 'grid', gridTemplateColumns: '10px 1fr auto 90px', padding: '10px 20px', borderBottom: '1px solid rgba(255,255,255,0.03)', gap: 14, alignItems: 'center', transition: 'background 0.15s' }}
+                  onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.04)')}
                   onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
                 >
-                  <div style={{ width: 8, height: 8, borderRadius: '50%', background: statusColor, boxShadow: `0 0 5px ${statusColor}`, flexShrink: 0 }} />
+                  <div className={`status-dot ${t.status || 'idle'}`} />
                   <div>
-                    <div style={{ fontSize: 12, color: '#F0F4FF', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <div style={{ fontSize: 13, color: 'var(--text-primary)', fontFamily: 'Outfit, sans-serif', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                       {t.name || t.task_id || 'Unknown task'}
                     </div>
-                    <div style={{ fontSize: 10, color: '#4A5280', marginTop: 1 }}>
+                    <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 2, fontFamily: 'Sora, sans-serif' }}>
                       Agent: {t.agent_id || '—'}
                     </div>
                   </div>
-                  <div style={{ fontSize: 10, fontFamily: 'JetBrains Mono', color: statusColor, textTransform: 'uppercase', fontWeight: 700 }}>
-                    {status === 'stopped' ? 'DONE' : status || 'QUEUED'}
-                  </div>
-                  <div style={{ fontSize: 10, color: '#4A5280', textAlign: 'right', fontFamily: 'JetBrains Mono' }}>
-                    {t.task_id ? `#${String(t.task_id).slice(-6)}` : '—'}
+                  <span className={`badge badge-${t.status === 'completed' || t.status === 'stopped' ? 'emerald' : t.status === 'failed' ? 'red' : t.status === 'running' ? 'cyan' : 'amber'}`}>
+                    {s.label}
+                  </span>
+                  <div style={{ fontSize: 10, color: 'var(--text-subtle)', textAlign: 'right', fontFamily: 'JetBrains Mono, monospace' }}>
+                    {t.task_id ? `#${String(t.task_id).slice(-8)}` : '—'}
                   </div>
                 </div>
               );
             })}
           </div>
         </div>
+
       </div>
     </AppShell>
   );
