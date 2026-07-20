@@ -37,3 +37,5 @@ check_state.py
 .pytest_cache/
 tests/__pycache__/
 events.jsonl
+checkpoints.sqlite-shm
+checkpoints.sqlite-wal
