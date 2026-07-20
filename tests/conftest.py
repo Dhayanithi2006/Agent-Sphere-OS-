@@ -1,6 +1,7 @@
 import pytest
 import asyncio
 from app.core.shared import scheduler, model_router, supervisor, event_bus, checkpoint_manager, shared_memory
+from app.core.shared import tool_manager
 from app.core.config import settings
 
 @pytest.fixture(autouse=True)
@@ -59,7 +60,17 @@ def configure_test_environment(request):
     scheduler._paused.clear()
     scheduler._active.clear()
     
+    # Reset tool manager state to prevent cross-test contamination
+    orig_tool_calls_count = tool_manager.tool_calls_count
+    orig_tool_cache = dict(tool_manager._cache)
+    tool_manager.tool_calls_count = 0
+    tool_manager._cache.clear()
+
     yield
+    
+    # Restore tool manager state
+    tool_manager.tool_calls_count = orig_tool_calls_count
+    tool_manager._cache = orig_tool_cache
     
     # Restore original keys
     settings.qwen_api_key = orig_settings_key

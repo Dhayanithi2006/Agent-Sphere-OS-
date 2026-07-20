@@ -26,5 +26,9 @@ jobs:
         pip install -r requirements.txt
 
     - name: Run Test Suite
+      env:
+        AGENTSPHERE_ENV: development
+        QWEN_API_KEY: mock-key
+        DASHSCOPE_API_KEY: mock-key
       run: |
         python -m pytest -v

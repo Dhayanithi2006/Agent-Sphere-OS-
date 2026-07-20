@@ -91,7 +91,10 @@ class ExecutionEngine:
                     self.logger.debug("[EXEC] Attempt %d/%d for agent '%s'", attempt + 1, max_attempts, agent.agent_id)
                     step_output = agent.execute(payload)
 
-                    self.logger.debug("[EXEC] Raw response from '%s': %s", agent.agent_id, step_output[:200])
+                    # Guard against non-string outputs (e.g. AgentString subclass on some platforms)
+                    if not isinstance(step_output, str):
+                        step_output = str(step_output) if step_output is not None else ""
+                    self.logger.debug("[EXEC] Raw response from '%s': %s", agent.agent_id, str(step_output)[:200])
                     
                     try:
                         cleaned = step_output.strip()
