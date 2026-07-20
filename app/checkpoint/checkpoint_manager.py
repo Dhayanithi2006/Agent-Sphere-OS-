@@ -39,6 +39,24 @@ class CheckpointManager:
         self._connection = connection
         return connection
 
+    def reset_for_test(self, db_path: str = ":memory:") -> None:
+        """Atomically swap the database path and connection for test isolation.
+
+        Safe replacement for the raw ``_connection = None`` pattern in conftest.py
+        which races with any background asyncio task still holding a cursor on
+        the old connection.
+        """
+        with self._lock:
+            old_conn = self._connection
+            self._connection = None
+            self._db_path = db_path
+            self._ensure_schema()
+            if old_conn is not None:
+                try:
+                    old_conn.close()
+                except Exception:
+                    pass
+
 
     def _ensure_parent_directory(self) -> None:
         parent = os.path.dirname(self._db_path)

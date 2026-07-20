@@ -117,6 +117,31 @@ class MemoryManager:
         self._connection = connection
         return connection
 
+    def reset_for_test(self, db_path: str = ":memory:") -> None:
+        """Atomically swap the database path and connection for test isolation.
+
+        This replaces the unsafe conftest.py pattern of:
+            obj._connection = None   # ← race: background tasks still use old cursor
+            obj._db_path = ":memory:"
+            obj._ensure_schema()
+
+        By holding the thread lock throughout, we guarantee no concurrent
+        coroutine observes a partially-reset state.
+        """
+        with self._thread_lock:
+            old_conn = self._connection
+            self._connection = None
+            self._db_path = db_path
+            # Re-initialise schema on the new connection
+            self._ensure_schema()
+            # Close the old connection only AFTER the new one is ready and cached
+            if old_conn is not None:
+                try:
+                    old_conn.close.__wrapped__(old_conn)  # bypass InMemoryConnection no-op
+                except Exception:
+                    pass
+
+
 
 
 
