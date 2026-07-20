@@ -7,6 +7,7 @@ import hashlib
 import json
 import os
 import sqlite3
+import threading
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 import redis
@@ -33,6 +34,9 @@ class MemoryManager:
         self._redis_client: Optional[redis.Redis] = None
         self._connection: Optional[sqlite3.Connection] = None
         self._lock = asyncio.Lock()
+        # Thread-level lock to protect SQLite from concurrent thread access
+        # (asyncio.Lock only works in async coroutines, not in asyncio.to_thread sync workers)
+        self._thread_lock = threading.RLock()
         
         # Transaction buffer mapping tx_id -> dict(storage_key -> serialized_value)
         self._active_transactions: Dict[str, Dict[str, str]] = {}
@@ -160,14 +164,15 @@ class MemoryManager:
                 pass
 
         # Fallback to SQLite
-        connection = self._connect()
-        try:
-            row = connection.execute("SELECT value FROM memory_items WHERE key = ?", (storage_key,)).fetchone()
-            if row is None:
-                return default
-            return json.loads(row["value"])
-        finally:
-            connection.close()
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                row = connection.execute("SELECT value FROM memory_items WHERE key = ?", (storage_key,)).fetchone()
+                if row is None:
+                    return default
+                return json.loads(row["value"])
+            finally:
+                connection.close()
 
     def exists(self, namespace: Optional[str], key: str) -> bool:
         """Check if key exists in memory."""
@@ -179,12 +184,13 @@ class MemoryManager:
             except Exception:
                 pass
 
-        connection = self._connect()
-        try:
-            row = connection.execute("SELECT 1 FROM memory_items WHERE key = ?", (storage_key,)).fetchone()
-            return row is not None
-        finally:
-            connection.close()
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                row = connection.execute("SELECT 1 FROM memory_items WHERE key = ?", (storage_key,)).fetchone()
+                return row is not None
+            finally:
+                connection.close()
 
     def delete(self, namespace: Optional[str], key: str) -> None:
         """Delete key and its version history."""
@@ -197,13 +203,14 @@ class MemoryManager:
             except Exception:
                 pass
 
-        connection = self._connect()
-        try:
-            connection.execute("DELETE FROM memory_items WHERE key = ?", (storage_key,))
-            connection.execute("DELETE FROM memory_versions WHERE key = ?", (storage_key,))
-            connection.commit()
-        finally:
-            connection.close()
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                connection.execute("DELETE FROM memory_items WHERE key = ?", (storage_key,))
+                connection.execute("DELETE FROM memory_versions WHERE key = ?", (storage_key,))
+                connection.commit()
+            finally:
+                connection.close()
 
     def _persist_key(self, storage_key: str, serialized_value: str) -> None:
         """Persist serialized value to SQLite/Redis and create a new version."""
@@ -217,27 +224,28 @@ class MemoryManager:
             except Exception:
                 pass
 
-        # Persist to SQLite
-        connection = self._connect()
-        try:
-            connection.execute(
-                "INSERT INTO memory_items(key, value, updated_at) VALUES(?, ?, ?) "
-                "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
-                (storage_key, serialized_value, now),
-            )
-            # Fetch next version integer
-            latest = connection.execute(
-                "SELECT MAX(version) AS version FROM memory_versions WHERE key = ?", (storage_key,)
-            ).fetchone()
-            version = 1 if latest is None or latest["version"] is None else int(latest["version"]) + 1
+        # Persist to SQLite (serialized by thread lock to prevent concurrent write races)
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                connection.execute(
+                    "INSERT INTO memory_items(key, value, updated_at) VALUES(?, ?, ?) "
+                    "ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+                    (storage_key, serialized_value, now),
+                )
+                # Fetch next version integer
+                latest = connection.execute(
+                    "SELECT MAX(version) AS version FROM memory_versions WHERE key = ?", (storage_key,)
+                ).fetchone()
+                version = 1 if latest is None or latest["version"] is None else int(latest["version"]) + 1
 
-            connection.execute(
-                "INSERT INTO memory_versions(key, value, version, created_at) VALUES(?, ?, ?, ?)",
-                (storage_key, serialized_value, version, now),
-            )
-            connection.commit()
-        finally:
-            connection.close()
+                connection.execute(
+                    "INSERT INTO memory_versions(key, value, version, created_at) VALUES(?, ?, ?, ?)",
+                    (storage_key, serialized_value, version, now),
+                )
+                connection.commit()
+            finally:
+                connection.close()
 
     # ---------------------------------------------------------------------------
     # Transactions
@@ -276,40 +284,43 @@ class MemoryManager:
     def history(self, namespace: Optional[str], key: str) -> List[Dict[str, Any]]:
         """Retrieve version logs for a key."""
         storage_key = self._compose_key(namespace, key)
-        connection = self._connect()
-        try:
-            rows = connection.execute(
-                "SELECT value, version, created_at FROM memory_versions WHERE key = ? ORDER BY version ASC",
-                (storage_key,),
-            ).fetchall()
-            return [
-                {
-                    "value": json.loads(row["value"]),
-                    "version": row["version"],
-                    "created_at": row["created_at"],
-                }
-                for row in rows
-            ]
-        finally:
-            connection.close()
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                rows = connection.execute(
+                    "SELECT value, version, created_at FROM memory_versions WHERE key = ? ORDER BY version ASC",
+                    (storage_key,),
+                ).fetchall()
+                return [
+                    {
+                        "value": json.loads(row["value"]),
+                        "version": row["version"],
+                        "created_at": row["created_at"],
+                    }
+                    for row in rows
+                ]
+            finally:
+                connection.close()
 
     def rollback_key_to_version(self, namespace: Optional[str], key: str, version: int) -> bool:
         """Rollback key value to a specific older version index."""
         storage_key = self._compose_key(namespace, key)
-        connection = self._connect()
-        try:
-            row = connection.execute(
-                "SELECT value FROM memory_versions WHERE key = ? AND version = ?", (storage_key, version)
-            ).fetchone()
-            if not row:
-                return False
-            
-            # Write back older version value
-            serialized = row["value"]
-            self._persist_key(storage_key, serialized)
-            return True
-        finally:
-            connection.close()
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                row = connection.execute(
+                    "SELECT value FROM memory_versions WHERE key = ? AND version = ?", (storage_key, version)
+                ).fetchone()
+                if not row:
+                    return False
+                
+                # Write back older version value
+                serialized = row["value"]
+            finally:
+                connection.close()
+        # Persist outside the lock to allow _persist_key's own lock acquisition
+        self._persist_key(storage_key, serialized)
+        return True
 
     # ---------------------------------------------------------------------------
     # Memory Snapshots
@@ -317,24 +328,26 @@ class MemoryManager:
 
     def create_snapshot(self) -> str:
         """Serialize complete database memory items to a JSON snapshot string."""
-        connection = self._connect()
-        try:
-            rows = connection.execute("SELECT key, value FROM memory_items").fetchall()
-            snapshot_dict = {row["key"]: json.loads(row["value"]) for row in rows}
-            return json.dumps(snapshot_dict)
-        finally:
-            connection.close()
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                rows = connection.execute("SELECT key, value FROM memory_items").fetchall()
+                snapshot_dict = {row["key"]: json.loads(row["value"]) for row in rows}
+                return json.dumps(snapshot_dict)
+            finally:
+                connection.close()
 
     def restore_snapshot(self, snapshot_data: str) -> None:
         """Restore all memory items from a serialized JSON snapshot string."""
         snapshot_dict = json.loads(snapshot_data)
-        connection = self._connect()
-        try:
-            connection.execute("DELETE FROM memory_items")
-            connection.execute("DELETE FROM memory_versions")
-            connection.commit()
-        finally:
-            connection.close()
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                connection.execute("DELETE FROM memory_items")
+                connection.execute("DELETE FROM memory_versions")
+                connection.commit()
+            finally:
+                connection.close()
 
         # Write each key back
         for storage_key, val in snapshot_dict.items():
@@ -378,16 +391,17 @@ class MemoryManager:
         vector_id = doc_id or f"vec-{hashlib.md5(os.urandom(16)).hexdigest()[:8]}"
         vector = self._generate_embeddings(text)
         
-        connection = self._connect()
-        try:
-            connection.execute(
-                "INSERT INTO vector_items(id, text, vector, metadata) VALUES(?, ?, ?, ?)"
-                "ON CONFLICT(id) DO UPDATE SET text = excluded.text, vector = excluded.vector, metadata = excluded.metadata",
-                (vector_id, text, json.dumps(vector), json.dumps(metadata or {})),
-            )
-            connection.commit()
-        finally:
-            connection.close()
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                connection.execute(
+                    "INSERT INTO vector_items(id, text, vector, metadata) VALUES(?, ?, ?, ?)"
+                    "ON CONFLICT(id) DO UPDATE SET text = excluded.text, vector = excluded.vector, metadata = excluded.metadata",
+                    (vector_id, text, json.dumps(vector), json.dumps(metadata or {})),
+                )
+                connection.commit()
+            finally:
+                connection.close()
         
         return vector_id
 
@@ -396,20 +410,22 @@ class MemoryManager:
         query_vector = self._generate_embeddings(query_text)
         results = []
 
-        connection = self._connect()
-        try:
-            rows = connection.execute("SELECT id, text, vector, metadata FROM vector_items").fetchall()
-            for row in rows:
-                item_vector = json.loads(row["vector"])
-                similarity = self._cosine_similarity(query_vector, item_vector)
-                results.append({
-                    "id": row["id"],
-                    "text": row["text"],
-                    "similarity": similarity,
-                    "metadata": json.loads(row["metadata"]),
-                })
-        finally:
-            connection.close()
+        with self._thread_lock:
+            connection = self._connect()
+            try:
+                rows = connection.execute("SELECT id, text, vector, metadata FROM vector_items").fetchall()
+                items = [(row["id"], row["text"], json.loads(row["vector"]), json.loads(row["metadata"])) for row in rows]
+            finally:
+                connection.close()
+
+        for item_id, item_text, item_vector, item_meta in items:
+            similarity = self._cosine_similarity(query_vector, item_vector)
+            results.append({
+                "id": item_id,
+                "text": item_text,
+                "similarity": similarity,
+                "metadata": item_meta,
+            })
 
         # Sort descending by similarity
         results.sort(key=lambda x: x["similarity"], reverse=True)
